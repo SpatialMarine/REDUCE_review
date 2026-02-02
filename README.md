@@ -26,8 +26,8 @@ Title...
 
 | Folder | Description |
 |----|----|
-| *fun* | custom functions used into different scripts in `scr` folder |
-| *scr* | R scripts used to performance the data process, analysis and visualization of the research study. |
+| *fun* | custom functions used into different scripts in `src` folder |
+| *src* |  Source R scripts for data processing, statistical analysis, and visualization. |
 
 ### Data availability
 
