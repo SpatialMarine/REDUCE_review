@@ -10,10 +10,10 @@ Author
 <a href="https://orcid.org/0000-0002-0072-1233">
   <img src="https://cdn.simpleicons.org/orcid/A6CE39" width="21"/>
 </a>,
-, ... and Author
+... and Author
 <a href="https://orcid.org/0000-0002-0072-1233">
   <img src="https://cdn.simpleicons.org/orcid/A6CE39" width="21"/>
-</a>,. 
+</a>. 
 Title...
 
 ------------------------------------------------------------------------
@@ -34,6 +34,14 @@ See Data availability statement in the published article
 Copyright (c) 2026. Author
 
 @author
+<a href="https://github.com/davidruizgarci">
+  <img src="https://cdn.simpleicons.org/github/ffffff" width="22"/>
+</a> 
+<a href="https://www.researchgate.net/profile/David-Ruiz-Garcia-3">
+  <img src="https://cdn.simpleicons.org/researchgate/00CCBB" width="22"/>
+</a>
+
+@author ADD YOUR DETAILS
 <a href="https://github.com/davidruizgarci">
   <img src="https://cdn.simpleicons.org/github/ffffff" width="22"/>
 </a> 
