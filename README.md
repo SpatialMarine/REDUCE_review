@@ -23,12 +23,12 @@ See Data availability statement in the published article
 
 Copyright (c) 2026. Author
 
-@author 
+@author
 <a href="https://github.com/davidruizgarci">
-  <img src="images/github-mark-white.svg" alt="GitHub logo" width="23"/>
+  <img src="https://cdn.simpleicons.org/github/ffffff" width="22"/>
 </a>
-<a href="https://www.researchgate.net/profile/David-Ruiz-Garcia-3?ev=hdr_xprf">
-  <img src="images/researchgate.svg" alt="ResearchGate logo" width="23"/>
+<a href="https://www.researchgate.net/profile/David-Ruiz-Garcia-3">
+  <img src="https://cdn.simpleicons.org/researchgate/00CCBB" width="22"/>
 </a>
 
 Licensed under the [MIT License](https://github.com/SpatialMarine/REDUCE_review/blob/main/LICENSE)
