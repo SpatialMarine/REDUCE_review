@@ -2,9 +2,11 @@
 
 This repository provides the R code used in the following research paper:
 
-Author 
-<a href="https://orcid.org/0000-0002-0072-1233"><img src="images/orcid.svg" alt="ORCID logo" width="21"/></a>,
-, Author, ... and Author. Tittle.
+Author
+<a href="https://orcid.org/0000-0002-0072-1233">
+  <img src="https://cdn.simpleicons.org/orcid/A6CE39" width="21"/>
+</a>,
+Author, ... and Author. Title.
 
 ------------------------------------------------------------------------
 
