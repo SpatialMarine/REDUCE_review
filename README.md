@@ -35,7 +35,7 @@ See Data availability statement in the published article
 
 ### License
 
-Copyright (c) 2026. Author
+Copyright (c) 2026. David Ruiz-García, Leia Navarro-Herrero, Jazel Ouled-Cheikh, Paola Gabasa, Ignacio Saint-Malo, Alejandro Espada-Pastor, Diego Fernández-Fernández, David March (not in order of publication or anything atm)
 
 @davidruizgarci
 <a href="https://github.com/davidruizgarci">
