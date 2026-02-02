@@ -2,7 +2,6 @@
 
 Also available for referencing in Zenodo ![](images/zenodo.15551823-1.svg)
 
-
 This repository provides the R code used in the following research paper:
 
 Author
