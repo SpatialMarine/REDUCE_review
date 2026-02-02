@@ -33,7 +33,7 @@ See Data availability statement in the published article
 
 Copyright (c) 2026. Author
 
-@author
+@davidruizgarci
 <a href="https://github.com/davidruizgarci">
   <img src="https://cdn.simpleicons.org/github/ffffff" width="22"/>
 </a> 
