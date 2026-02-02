@@ -1,7 +1,8 @@
 # A systematic review of marine megafauna ecology and fisheries interaction in west Africa  - R Code
 
 Also available for referencing in Zenodo  
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15551823.svg)](https://doi.org/10.5281/zenodo.15551823)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14847311.svg)](https://doi.org/10.5281/zenodo.14847311)
+
 
 This repository provides the R code used in the following research paper:
 
