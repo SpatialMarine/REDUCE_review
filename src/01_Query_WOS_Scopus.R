@@ -1,3 +1,52 @@
+# -----------------------------------------------------------------------------
+
+# Title:
+
+#--------------------------------------------------------------------------------
+# 01. Fitting queries in WOS and SCOPUS
+#--------------------------------------------------------------------------------
+
+# This script builds reproducible and transparent Boolean search queries for
+# systematic literature searches in Web of Science and Scopus using the `litsearchr` package. 
+
+# In the context of West Africa and the Eastern Central Atlantic (REDUCE area),
+# the objective is to identify peer-reviewed studies addressing:
+# 1. the spatial distribution of marine megafauna and methods used.
+# 2. the spatial distribution and intensity of industrial fishing (including IUU fishing)
+# 3. the spatial distribution of bycatch risk.
+
+# The workflow:
+# 1. Defines concept-based keyword blocks,
+# 2. Combines them into two research-question-specific queries (RQ1 and RQ2)
+# 3. Formats database-specific search strings following WoS and Scopus syntax requirements. 
+# It also includes: 
+#- Explicit exclusion terms
+#- restricts results to:
+#  - peer-reviewed articles in english
+#  - published during a predefined publication period
+#
+# The resulting queries are intended for use in systematic or scoping
+# reviews, ensuring consistency, transparency, and reproducibility of the
+# literature search strategy across databases.
+
+# Notes --------------------------------------------------
+
+# - Concept blocks are defined independently and combined using Boolean logic
+#   (OR within concepts, AND between concepts) via `litsearchr::write_search()`.
+# - XXX research questions are implemented:
+#     * RQ1: Industrial fishing fleets + region + spatial fishing effort
+#     * RQ2: Industrial fishing fleets + region + IUU fishing
+# - Exclusion terms are applied separately to comply with database-specific
+#   constraints (NOT inside TS for WoS, NOT outside TITLE-ABS-KEY for Scopus).
+# - Searches are restricted to journal articles published between 1900–2024
+#   (WoS) and 2000–2024 (Scopus).
+# - Only English-language search terms are used, with stemming and exact phrase
+#   matching enabled.
+# - The script outputs fully formatted search strings ready for direct use in
+#   the WoS and Scopus web interfaces.
+#
+# -----------------------------------------------------------------------------
+
 # RESEARCH QUESTION 1
 # How are industrial longline, purse seine, and trawl fisheries
 # spatially distriibuted in West African marine waters, in terms
@@ -8,6 +57,7 @@
 # hotspots of illegal, unreported, and unregulated (IUU) industrial
 # fishing by longline, purse seine, and trawl fleets in West African waters?
 
+#remotes::install_github("elizagrames/litsearchr")
 library(litsearchr)
 library(tidyr)
 library(dplyr)
@@ -174,133 +224,4 @@ cat("\n--- WoS RQ1 ---\n", wos_rq1, "\n") # 101
 #cat("\n--- WoS RQ2 ---\n", wos_rq2, "\n") # 5
 cat("\n--- Scopus RQ1 ---\n", scopus_rq1, "\n") # 177
 #cat("\n--- Scopus RQ2 ---\n", scopus_rq2, "\n") # 14
-
-# -------------------------
-# Read ris files and remove duplicates
-# -------------------------
-
-#######
-# RQ1 #
-#######
-
-#wos
-wos <- synthesisr::read_refs(
-  filename   = "C:/Users/lnh88/Dropbox/Projects/ongoing/REDUCE_Milestone/RQ1_WOS.ris",
-  tag_naming = "wos",
-  return_df  = TRUE,
-  verbose    = TRUE) %>%
-  dplyr::select(title, DO) %>%
-  rename(doi = DO) %>%
-  mutate(source = "wos") %>%
-  drop_na(doi) # ara n results = 163 (no 182)
-
-#scopus
-scopus <- synthesisr::read_refs(
-  filename   = "C:/Users/lnh88/Dropbox/Projects/ongoing/REDUCE_Milestone/RQ1_SCOPUS.ris",
-  tag_naming = "scopus",
-  return_df  = TRUE,
-  verbose    = TRUE) %>%
-  dplyr::select(title, doi) %>%
-  mutate(source = "scopus") %>%
-  drop_na(doi) # ara n results = 309 (no 341)
-
-
-# merge both and remove duplicates (by doi)
-clean_doi <- function(x) {
-  x %>%
-    str_to_lower() %>%
-    str_trim() %>%
-    str_remove("^doi\\s*:\\s*") %>%
-    str_remove("^https?://(dx\\.)?doi\\.org/") %>%
-    str_remove("[\\s\\.;,\\)]+$")  # trim trailing junk
-}
-
-wos <- wos %>%
-  mutate(doi = clean_doi(doi)) %>%
-  filter(!is.na(doi), doi != "")
-
-scopus <- scopus %>%
-  mutate(doi = clean_doi(doi)) %>%
-  filter(!is.na(doi), doi != "")
-
-all <- bind_rows(scopus, wos) %>%
-  distinct(doi, .keep_all = TRUE)
-
-glimpse(all)
-
-# check gold papers
-
-gold_doi <- c(
-  "10.1111/faf.12555", #"Tracking industrial fishing activities in African waters from space"
-  "10.1126/science.aao5646",#Tracking the global footprint of fisheries
-  "10.3389/fmars.2021.602917"#Industrial Fishing Near West African Marine Protected Areas and Its Potential Effects on Mobile Marine Predators
-  ) 
-
-all %>%
-  filter(doi %in% gold_doi) %>%
-  select(title, doi, source)
-
-
-#######
-# RQ2 #
-#######
-
-#wos
-wos <- synthesisr::read_refs(
-  filename   = "C:/Users/lnh88/Dropbox/Projects/ongoing/REDUCE_Milestone/RQ2_wos.ris",
-  tag_naming = "wos",
-  return_df  = TRUE,
-  verbose    = TRUE) %>%
-  dplyr::select(title, DO) %>%
-  rename(doi = DO) %>%
-  mutate(source = "wos") %>%
-  drop_na(doi)
-
-#scopus
-scopus <- synthesisr::read_refs(
-  filename   = "C:/Users/lnh88/Dropbox/Projects/ongoing/REDUCE_Milestone/RQ2_scopus.ris",
-  tag_naming = "scopus",
-  return_df  = TRUE,
-  verbose    = TRUE) %>%
-  dplyr::select(title, doi) %>%
-  mutate(source = "scopus") %>%
-  drop_na(doi)
-
-
-# merge both and remove duplicates (by doi)
-clean_doi <- function(x) {
-  x %>%
-    str_to_lower() %>%
-    str_trim() %>%
-    str_remove("^doi\\s*:\\s*") %>%
-    str_remove("^https?://(dx\\.)?doi\\.org/") %>%
-    str_remove("[\\s\\.;,\\)]+$")  # trim trailing junk
-}
-
-wos <- wos %>%
-  mutate(doi = clean_doi(doi)) %>%
-  filter(!is.na(doi), doi != "")
-
-scopus <- scopus %>%
-  mutate(doi = clean_doi(doi)) %>%
-  filter(!is.na(doi), doi != "")
-
-all <- bind_rows(scopus, wos) %>%
-  distinct(doi, .keep_all = TRUE)
-
-glimpse(all)
-
-# check gold papers
-
-gold_doi <- c(
-  "10.1111/faf.12436", #"Catching industrial fishing incursions into inshore waters of Africa from space"
-  "10.1371/journal.pone.0118351", #Euros vs. Yuan: Comparing European and Chinese Fishing Access in West Africa
-  "10.1126/sciadv.abq2109", #Hot spots of unseen fishing vessels
-  "10.1126/sciadv.abp8200", #Tracking elusive and shifting identities of the global fishing fleet
-  "10.3389/fmars.2017.00050" #Assessing the Effectiveness of Monitoring Control and Surveillance of Illegal Fishing: The Case of West Africa
-)
-
-all %>%
-  filter(doi %in% gold_doi) %>%
-  select(title, doi, source)
 
