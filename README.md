@@ -6,7 +6,15 @@ Author
 <a href="https://orcid.org/0000-0002-0072-1233">
   <img src="https://cdn.simpleicons.org/orcid/A6CE39" width="21"/>
 </a>,
-Author, ... and Author. Title.
+Author
+<a href="https://orcid.org/0000-0002-0072-1233">
+  <img src="https://cdn.simpleicons.org/orcid/A6CE39" width="21"/>
+</a>,
+, ... and Author
+<a href="https://orcid.org/0000-0002-0072-1233">
+  <img src="https://cdn.simpleicons.org/orcid/A6CE39" width="21"/>
+</a>,. 
+Title...
 
 ------------------------------------------------------------------------
 
@@ -28,7 +36,7 @@ Copyright (c) 2026. Author
 @author
 <a href="https://github.com/davidruizgarci">
   <img src="https://cdn.simpleicons.org/github/ffffff" width="22"/>
-</a>
+</a> 
 <a href="https://www.researchgate.net/profile/David-Ruiz-Garcia-3">
   <img src="https://cdn.simpleicons.org/researchgate/00CCBB" width="22"/>
 </a>
