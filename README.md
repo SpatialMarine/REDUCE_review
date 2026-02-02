@@ -36,16 +36,14 @@ Copyright (c) 2026. Author
 @davidruizgarci
 <a href="https://github.com/davidruizgarci">
   <img src="https://cdn.simpleicons.org/github/ffffff" width="22"/>
-</a> 
-<a href="https://www.researchgate.net/profile/David-Ruiz-Garcia-3">
+</a><a href="https://www.researchgate.net/profile/David-Ruiz-Garcia-3">
   <img src="https://cdn.simpleicons.org/researchgate/00CCBB" width="22"/>
 </a>
 
 @author ADD YOUR DETAILS
 <a href="https://github.com/davidruizgarci">
   <img src="https://cdn.simpleicons.org/github/ffffff" width="22"/>
-</a> 
-<a href="https://www.researchgate.net/profile/David-Ruiz-Garcia-3">
+</a><a href="https://www.researchgate.net/profile/David-Ruiz-Garcia-3">
   <img src="https://cdn.simpleicons.org/researchgate/00CCBB" width="22"/>
 </a>
 
