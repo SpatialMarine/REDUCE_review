@@ -38,8 +38,7 @@
 #     * RQ2: Industrial fishing fleets + region + IUU fishing
 # - Exclusion terms are applied separately to comply with database-specific
 #   constraints (NOT inside TS for WoS, NOT outside TITLE-ABS-KEY for Scopus).
-# - Searches are restricted to journal articles published between 1900–2024
-#   (WoS) and 2000–2024 (Scopus).
+# - Searches are restricted to journal articles published between a certain period of time
 # - Only English-language search terms are used, with stemming and exact phrase
 #   matching enabled.
 # - The script outputs fully formatted search strings ready for direct use in
@@ -221,7 +220,8 @@ scopus_rq2 <- paste0(
 )
 
 cat("\n--- WoS RQ1 ---\n", wos_rq1, "\n") # 101
-#cat("\n--- WoS RQ2 ---\n", wos_rq2, "\n") # 5
+cat("\n--- WoS RQ2 ---\n", wos_rq2, "\n") # 5
+
 cat("\n--- Scopus RQ1 ---\n", scopus_rq1, "\n") # 177
-#cat("\n--- Scopus RQ2 ---\n", scopus_rq2, "\n") # 14
+cat("\n--- Scopus RQ2 ---\n", scopus_rq2, "\n") # 14
 

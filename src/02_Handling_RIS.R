@@ -36,7 +36,7 @@
 
 #wos
 wos <- synthesisr::read_refs(
-  filename   = "C:/Users/lnh88/Dropbox/Projects/ongoing/REDUCE_Milestone/RQ1_WOS.ris",
+  filename   = paste0(input_data, "Search_Fisheries_Bycatch/WOS/RQ1_WOS.ris"),
   tag_naming = "wos",
   return_df  = TRUE,
   verbose    = TRUE) %>%
@@ -47,7 +47,7 @@ wos <- synthesisr::read_refs(
 
 #scopus
 scopus <- synthesisr::read_refs(
-  filename   = "C:/Users/lnh88/Dropbox/Projects/ongoing/REDUCE_Milestone/RQ1_SCOPUS.ris",
+  filename   = paste0(input_data, "Search_Fisheries_Bycatch/Scopus/RQ1_Scopus.ris"),
   tag_naming = "scopus",
   return_df  = TRUE,
   verbose    = TRUE) %>%
@@ -98,7 +98,7 @@ all %>%
 
 #wos
 wos <- synthesisr::read_refs(
-  filename   = "C:/Users/lnh88/Dropbox/Projects/ongoing/REDUCE_Milestone/RQ2_wos.ris",
+  filename   = paste0(input_data, "Search_Fisheries_Bycatch/WOS/RQ2_WOS.ris"),
   tag_naming = "wos",
   return_df  = TRUE,
   verbose    = TRUE) %>%
@@ -109,7 +109,7 @@ wos <- synthesisr::read_refs(
 
 #scopus
 scopus <- synthesisr::read_refs(
-  filename   = "C:/Users/lnh88/Dropbox/Projects/ongoing/REDUCE_Milestone/RQ2_scopus.ris",
+  filename   = paste0(input_data, "Search_Fisheries_Bycatch/Scopus/RQ2_Scopus.ris"),
   tag_naming = "scopus",
   return_df  = TRUE,
   verbose    = TRUE) %>%
