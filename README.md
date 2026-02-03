@@ -1,4 +1,4 @@
-# A systematic review of marine megafauna ecology and fisheries interaction in west Africa  - R Code
+# A systematic review of marine megafauna distribution and fisheries interaction in west Africa  - R Code
 
 Also available for referencing in Zenodo  
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14847311.svg)](https://doi.org/10.5281/zenodo.14847311)
@@ -35,7 +35,7 @@ See Data availability statement in the published article
 
 ### License
 
-Copyright (c) 2026. Author
+Copyright (c) 2026. David Ruiz-García, Leia Navarro-Herrero, Jazel Ouled-Cheikh, Paola Gabasa, Ignacio Saint-Malo, Alejandro Espada-Pastor, Diego Fernández-Fernández, David March (not in order of publication or anything atm)
 
 @davidruizgarci
 <a href="https://github.com/davidruizgarci">
