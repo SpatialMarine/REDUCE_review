@@ -25,6 +25,10 @@
 #   references are captured by the search and survive the cleaning pipeline.
 #
 # -----------------------------------------------------------------------------
+library(litsearchr)
+library(tidyr)
+library(dplyr)
+library(stringr)
 
 # -------------------------
 # Read ris files and remove duplicates
@@ -35,25 +39,36 @@
 #######
 
 #wos
-wos <- synthesisr::read_refs(
-  filename   = paste0(input_data, "Search_Fisheries_Bycatch/WOS/RQ1_WOS.ris"),
+wos1 <- synthesisr::read_refs(
+  filename   = paste0(input_data, "/RIS/WoS_MegaFull.ris"),
   tag_naming = "wos",
   return_df  = TRUE,
   verbose    = TRUE) %>%
-  dplyr::select(title, DO) %>%
+  #dplyr::select(title, DO) %>%
   rename(doi = DO) %>%
-  mutate(source = "wos") %>%
-  drop_na(doi) # ara n results = 163 (no 182)
+  mutate(source = "wos") #%>%
+  #drop_na(doi) 
+
+wos2 <- synthesisr::read_refs(
+  filename   = paste0(input_data, "/RIS/WoS_MegaFull2.ris"),
+  tag_naming = "wos",
+  return_df  = TRUE,
+  verbose    = TRUE) %>%
+  #dplyr::select(title, DO) %>%
+  rename(doi = DO) %>%
+  mutate(source = "wos") #%>%
+#drop_na(doi) 
+
 
 #scopus
 scopus <- synthesisr::read_refs(
-  filename   = paste0(input_data, "Search_Fisheries_Bycatch/Scopus/RQ1_Scopus.ris"),
+  filename   = paste0(input_data, "/RIS/Scopus_MegaFull.ris"),
   tag_naming = "scopus",
   return_df  = TRUE,
   verbose    = TRUE) %>%
-  dplyr::select(title, doi) %>%
-  mutate(source = "scopus") %>%
-  drop_na(doi) # ara n results = 309 (no 341)
+  #dplyr::select(title, doi) %>%
+  mutate(source = "scopus") #%>%
+  #drop_na(doi) # ara n results = 309 (no 341)
 
 
 # merge both and remove duplicates (by doi)
@@ -66,91 +81,82 @@ clean_doi <- function(x) {
     str_remove("[\\s\\.;,\\)]+$")  # trim trailing junk
 }
 
-wos <- wos %>%
-  mutate(doi = clean_doi(doi)) %>%
-  filter(!is.na(doi), doi != "")
+wos1 <- wos1 %>%
+  mutate(doi = clean_doi(doi)) #%>%
+  #filter(!is.na(doi), doi != "")
+
+wos2 <- wos2 %>%
+  mutate(doi = clean_doi(doi)) #%>%
+#filter(!is.na(doi), doi != "")
 
 scopus <- scopus %>%
-  mutate(doi = clean_doi(doi)) %>%
-  filter(!is.na(doi), doi != "")
+  mutate(doi = clean_doi(doi)) #%>%
+  #filter(!is.na(doi), doi != "")
 
-all <- bind_rows(scopus, wos) %>%
-  distinct(doi, .keep_all = TRUE)
+# Filter by doi and when to available by tittle:
+all <- bind_rows(scopus, wos1, wos2) %>%
+  mutate(
+    doi = clean_doi(doi),
+    title_clean = title %>%
+      str_to_lower() %>%
+      str_squish() %>%
+      str_replace_all("[^a-z0-9\\s]", "")  # remove punctuation
+  ) %>%
+  mutate(dedup_key = if_else(!is.na(doi) & doi != "", doi, title_clean)) %>%
+  distinct(dedup_key, .keep_all = TRUE) %>%
+  select(-title_clean, -dedup_key)
 
-glimpse(all)
+glimpse(all) #1666
+2642-1666 #976 duplicados
 
 # check gold papers
-
 gold_doi <- c(
+  "10.2960/J.v35.m534", #Change in Elasmobranchs and Other Incidental Species in the Spanish Deepwater Black Hake Trawl Fishery off Mauritania (1992–2001) #NOPE
   "10.1111/faf.12555", #"Tracking industrial fishing activities in African waters from space"
   "10.1126/science.aao5646",#Tracking the global footprint of fisheries
-  "10.3389/fmars.2021.602917"#Industrial Fishing Near West African Marine Protected Areas and Its Potential Effects on Mobile Marine Predators
+  "10.3389/fmars.2021.602917",#Industrial Fishing Near West African Marine Protected Areas and Its Potential Effects on Mobile Marine Predators
+  "10.1111/faf.12436", #"Catching industrial fishing incursions into inshore waters of Africa from space"
+  "10.1371/journal.pone.0118351", #Euros vs. Yuan: Comparing European and Chinese Fishing Access in West Africa
+  "10.1126/sciadv.abq2109", #Hot spots of unseen fishing vessels #NOPE
+  "10.1126/sciadv.abp8200", #Tracking elusive and shifting identities of the global fishing fleet #NOPE
+  "10.3389/fmars.2017.00050" #Assessing the Effectiveness of Monitoring Control and Surveillance of Illegal Fishing: The Case of West Africa #NOPE
 ) 
 
 all %>%
   filter(doi %in% gold_doi) %>%
   select(title, doi, source)
 
+head(all)
+# structure the dataframe and export:
+all_keep <- all %>%
+  mutate(
+    paperID = row_number()) %>%
+  transmute(
+    paperID,
+    authors = author,
+    title = title,
+    year = year,
+    journal = source_abbreviated,        
+    volume = volume,
+    issue = issue,
+    start_page = start_page,
+    end_page = end_page,
+    doi = doi,
+    abstract = abstract,
+    Language = language,
+    document_type = document_type,
+    source = source        # WoS vs Scopus
+  )
 
-#######
-# RQ2 #
-#######
-
-#wos
-wos <- synthesisr::read_refs(
-  filename   = paste0(input_data, "Search_Fisheries_Bycatch/WOS/RQ2_WOS.ris"),
-  tag_naming = "wos",
-  return_df  = TRUE,
-  verbose    = TRUE) %>%
-  dplyr::select(title, DO) %>%
-  rename(doi = DO) %>%
-  mutate(source = "wos") %>%
-  drop_na(doi)
-
-#scopus
-scopus <- synthesisr::read_refs(
-  filename   = paste0(input_data, "Search_Fisheries_Bycatch/Scopus/RQ2_Scopus.ris"),
-  tag_naming = "scopus",
-  return_df  = TRUE,
-  verbose    = TRUE) %>%
-  dplyr::select(title, doi) %>%
-  mutate(source = "scopus") %>%
-  drop_na(doi)
+glimpse(all_keep)
 
 
-# merge both and remove duplicates (by doi)
-clean_doi <- function(x) {
-  x %>%
-    str_to_lower() %>%
-    str_trim() %>%
-    str_remove("^doi\\s*:\\s*") %>%
-    str_remove("^https?://(dx\\.)?doi\\.org/") %>%
-    str_remove("[\\s\\.;,\\)]+$")  # trim trailing junk
-}
+# export:
+library(openxlsx)
+dir <- paste0(input_data, "/rm_duplicates")
+if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
 
-wos <- wos %>%
-  mutate(doi = clean_doi(doi)) %>%
-  filter(!is.na(doi), doi != "")
-
-scopus <- scopus %>%
-  mutate(doi = clean_doi(doi)) %>%
-  filter(!is.na(doi), doi != "")
-
-all <- bind_rows(scopus, wos) %>%
-  distinct(doi, .keep_all = TRUE)
-
-glimpse(all)
-
-# check gold papers
-
-gold_doi <- c(
-  "10.1111/faf.12436", #"Catching industrial fishing incursions into inshore waters of Africa from space"
-  "10.1371/journal.pone.0118351", #Euros vs. Yuan: Comparing European and Chinese Fishing Access in West Africa
-  "10.1126/sciadv.abq2109", #Hot spots of unseen fishing vessels
-  "10.1126/sciadv.abp8200", #Tracking elusive and shifting identities of the global fishing fleet
-  "10.3389/fmars.2017.00050" #Assessing the Effectiveness of Monitoring Control and Surveillance of Illegal Fishing: The Case of West Africa
-)
-
-all %>%
-  filter(doi %in% gold_doi) %>%
-  select(title, doi, source)
+write.xlsx(
+  all_keep,
+  file = paste0(dir,"/paperList.xlsx"),
+  overwrite = TRUE)

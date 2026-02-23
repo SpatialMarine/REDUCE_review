@@ -86,10 +86,17 @@ library(stringr)
 # fleet
 fleet_terms <- c(
   "industrial fish*", "industrial fleet*", "industrial vessel*","distant-water fleet*", "distant water fleet*", 
+  
   "longline*", "longliner*", "long-line*",
-  "purse seine*", "purse-seine*", "purseseine*", "purse seine*", "purse-seine*", "purseseine*", 
+  
+  "purse seine*", "purse-seine*", "purseseine*", 
+  
   "FAD*", "fish aggregating device*", "fish-aggregating device*",
-  "trawl*", "trawler*"
+  
+  "trawl*", "trawler*",
+  
+  # Global studies from GFW:
+  "commercial fisher*", "fishing fleet", "illegal fishing"
 ) |> unique() |> sort()
 
 
@@ -101,14 +108,18 @@ region_terms <- c(
   "liberia*", "côte d'ivoire", "cote d'ivoire", "ivory coast", "ivor*", "ghana*",
   "togo*", "benin*", "nigeria*", "cameroon*", "equatorial guinea*", "gabon*",
   "sao tome and principe","são tomé and príncipe", "são tomé*", "canary islands",
-  "angola*","congo*", "republic of congo", "democratic republic of congo",
+  "angola*","congo*", "republic of congo", "democratic republic of congo", "ascension island*",
+  "helena island*", "st helena", "saint helena", "angola*", "namibia*", "south africa*",
+
     # Regional descriptors
-  "west africa*", "northwest africa", "south atlantic", "central east atlantic",
-  "eastern central atlantic", "eastern atlantic",
+  "africa*", #needed to capture gold papers
+  "east* central atlantic", "east* atlantic", "south* atlantic",
     # Management areas
-  "cecaf","fao area 34","fao 34",
+  "cecaf","fao area 34","fao 34", "seafo", "fao area 47", "fao 47",
     # Oceanographic regions
-  "gulf of guinea", "canary current", "guinea current"
+  "gulf of guinea", "canary current", "guinea current",
+    # Capture global studies
+  "global" #needed to capture gold papers
   ) |> unique() |> sort()
 
 
@@ -116,7 +127,7 @@ region_terms <- c(
 impact_component_terms <- c(
   #FISHING EFFORT:
   "fishing effort", "fishing intensity", "fishing distribution",
-  "fishing pressure", "fishing footprint",
+  "fishing pressure", "fishing footprint", "fishing activit*",
   "spatial distribution", "spatial pattern*",
   "spatial analys*", "hotspot*", "fishing footprint", "effort distribution",
   #IUU:
@@ -195,17 +206,87 @@ rq1_bool <- litsearchr::write_search(
 wos_rq1 <- paste0(
   "TS=(", rq1_bool, ")",
   #" NOT TS=(", exclude_block_wos, ")",
-  " AND DT=(Article) AND PY=(1900-2024)"
+  " AND DT=(Article) AND PY=(1900-2025)"
 )
 
 # Scopus exclusions must be outside TITLE-ABS-KEY
 scopus_rq1 <- paste0(
   "TITLE-ABS-KEY(", rq1_bool, ")",
   #" AND NOT TITLE-ABS-KEY(", exclude_block_scopus, ")",
-  " AND DOCTYPE(ar) AND PUBYEAR < 2025"
+  " AND DOCTYPE(ar) AND PUBYEAR < 2026"
 )
 
-cat("\n--- WoS RQ1 ---\n", wos_rq1, "\n") # 200
-cat("\n--- Scopus RQ1 ---\n", scopus_rq1, "\n") # 222
+cat("\n--- WoS RQ1 ---\n",wos_rq1, "\n") # 1332
+cat("\n--- Scopus RQ1 ---\n",scopus_rq1, "\n") # 1310
+
+1332+1310 #2642
 
 
+
+
+# Google scholar
+# Not recommendable as it is not a bolean search-------------------------------
+# 1) Make terms Scholar-friendly
+to_scholar <- function(x) {
+  x %>%
+    unique() %>%
+    str_trim() %>%
+    .[. != ""] %>%
+    str_replace_all("\\*", "") %>%                         # Scholar doesn't do WoS truncation
+    ifelse(str_detect(., "\\s"), paste0('"', ., '"'), .)    # quote phrases
+}
+
+# 2) Build OR block
+or_block <- function(x) paste(x, collapse = " OR ")
+
+# ---- Prepare common blocks: ALL fleet + ALL region ----
+fleet_block  <- paste0("(", or_block(to_scholar(fleet_terms)), ")")
+region_block <- paste0("(", or_block(to_scholar(region_terms)), ")")
+# ---- Split impact terms into your 4 sections ----
+impact_effort <- c(
+  "fishing effort", "fishing intensity", "fishing distribution",
+  "fishing pressure", "fishing footprint", "fishing activit*",
+  "spatial distribution", "spatial pattern*",
+  "spatial analys*", "hotspot*", "effort distribution"
+)
+
+impact_iuu <- c(
+  "IUU", "illegal fish*", "unreported fish*", "unregulated fish*", "fisheries crime"
+)
+
+impact_ghost <- c(
+  "ghost gear", "lost fishing gear", "abandoned fishing gear",
+  "derelict fishing gear", "abandoned, lost or otherwise discarded fishing gear"
+)
+
+impact_bycatch <- c(
+  "megafauna",
+  "elasmobranch*", "shark*", "batoid*", "skate*", "chondrichthyan*", "chimaera*", "holocephal*",
+  "cetacean*", "dolphin*", "whale*", "porpoise*", "marine mammal*",
+  "sea turtle*",
+  "seabird*"
+)
+
+impact_blocks <- list(
+  effort  = paste0("(", or_block(to_scholar(impact_effort)),  ")"),
+  iuu     = paste0("(", or_block(to_scholar(impact_iuu)),     ")"),
+  ghost   = paste0("(", or_block(to_scholar(impact_ghost)),   ")"),
+  bycatch = paste0("(", or_block(to_scholar(impact_bycatch)), ")")
+)
+
+# ---- 3) Build final Scholar queries (one per section) ----
+scholar_queries <- lapply(impact_blocks, function(imp) {
+  paste(fleet_block, region_block, imp)
+})
+
+# If you truly want 4 strings:
+scholar_queries <- scholar_queries[c("effort", "iuu", "ghost", "bycatch")]
+
+
+# ---- 4) Print / inspect ----
+names(scholar_queries)
+nchar(unlist(scholar_queries))  # length check
+cat(scholar_queries[["effort"]])
+cat(scholar_queries[["iuu"]])
+cat(scholar_queries[["ghost"]])
+cat(scholar_queries[["bycatch"]])
