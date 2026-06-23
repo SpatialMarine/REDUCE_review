@@ -79,67 +79,69 @@ library(tidyr)
 library(dplyr)
 library(stringr)
 
-# -------------------------
-# CONCEPT BLOCKS 
-# -------------------------
 
-# fleet
+# 1. Add key words in concept blocks -------------------------------------------
+
+
+# 1.1. FLEET
 fleet_terms <- c(
-  "industrial fish*", "industrial fleet*", "industrial vessel*","distant-water fleet*", "distant water fleet*", 
-  
-  "longline*", "longliner*", "long-line*",
-  
+  "industrial fish*", "industrial fleet*", "industrial vessel*", "F.R.S.",
+  "distant-water fleet*", "distant water fleet*", 
+  "longline*", "long-line*",
   "purse seine*", "purse-seine*", "purseseine*", 
-  
   "FAD*", "fish aggregating device*", "fish-aggregating device*",
-  
-  "trawl*", "trawler*",
-  
-  # Global studies from GFW:
+  "trawl*",
+  # include global studies from GFW:
   "commercial fisher*", "fishing fleet", "illegal fishing"
 ) |> unique() |> sort()
 
 
-# region
+# 1.2. REGION
 region_terms <- c(
     # Countries and territories (FAO Area 34 scope)
   "morocc*", "western sahara", "mauritania*", "senegal*", "cabo verde", "cape verde*",
-  "gambia*", "guinea bissau", "guinea-bissau", "guinea*", "sierra leone*",
-  "liberia*", "côte d'ivoire", "cote d'ivoire", "ivory coast", "ivor*", "ghana*",
-  "togo*", "benin*", "nigeria*", "cameroon*", "equatorial guinea*", "gabon*",
-  "sao tome and principe","são tomé and príncipe", "são tomé*", "canary islands",
-  "angola*","congo*", "republic of congo", "democratic republic of congo", "ascension island*",
-  "helena island*", "st helena", "saint helena", "angola*", "namibia*", "south africa*",
-
+  "gambia*", "guinea*", "sierra leone*",
+  "liberia*", "ivor*", "ghana*",
+  "togo*", "benin*", "nigeria*", "cameroon*", "gabon*",
+  "sao tome*", "são tomé*", "canary islands",
+  "angola*","congo*", "ascension island*",
+  "helena island*", "st helena", "saint helena", "angola*", "namibia*", 
     # Regional descriptors
   "africa*", #needed to capture gold papers
-  "east* central atlantic", "east* atlantic", "south* atlantic",
+  "east* central atlantic", "east* atlantic", "south* atlantic", "east* tropical atlantic",
+  "canary current", 
     # Management areas
-  "cecaf","fao area 34","fao 34", "seafo", "fao area 47", "fao 47",
-    # Oceanographic regions
-  "gulf of guinea", "canary current", "guinea current",
+  #"cecaf","fao area 34","fao 34", "seafo", "fao area 47", "fao 47",
     # Capture global studies
   "global" #needed to capture gold papers
   ) |> unique() |> sort()
 
 
-# spatial effort
+# 1.3. IMPACT COMPONENT
 impact_component_terms <- c(
   #FISHING EFFORT:
-  "fishing effort", "fishing intensity", "fishing distribution",
+  "fishing effort", "fishing intensity", "fishing distribution", "shift* target species",
   "fishing pressure", "fishing footprint", "fishing activit*",
   "spatial distribution", "spatial pattern*",
   "spatial analys*", "hotspot*", "fishing footprint", "effort distribution",
+  # needed generalities for gold papers:
+  "satellite imagery", "vessel tracking","AIS", #"vessel GPS",
   #IUU:
   "IUU", "illegal fish*", "unreported fish*", "unregulated fish*", "fisheries crime",
   #GHOST GEAR:
-  "ghost gear", "lost fishing gear", "abandoned fishing gear", 
+  "ghost gear", "lost fishing gear", "abandoned fishing gear",  "abandoned, lost or discarded",
   "derelict fishing gear", "abandoned, lost or otherwise discarded fishing gear",
   #MEGAFAUNA BYCATCH:
-  "megafauna",
+  "megafauna", "bycatch", "by-catch", 
+  "accidental catch*", "accidental captur*", 
+  "incidental catch*", "incidental captur*", 
+  #"non-target catch*", "interactions with fisher*", "fisheries interaction*",
     # Elasmobranchs
-  "elasmobranch*", "shark*", "batoid*", "skate*", "chondrichthyan*", "chimaera*", "holocephal*",
-    # Cetaceans
+  "elasmobranch*", "shark*", "batoid*", "skate*", "chondrichthyan*", "chimaera*", "holocephal*", #"cartilaginous fish*",
+  #"skate*", "rajiformes", "myliobatiformes", "rhinopristiformes", "torpediniformes",
+  #"stingray*", "manta ray*", "devil ray*", "eagle ray*", "guitarfish*", "wedgefish*", "sawfish*", "electric ray*",
+  
+   # Cetaceans
   "cetacean*", "dolphin*", "whale*", "porpoise*", "marine mammal*",
     # Sea turtles
   "sea turtle*",
@@ -147,37 +149,20 @@ impact_component_terms <- c(
   "seabird*"
 ) |> unique() |> sort()
 
-# monitoring 
-#monitoring_data_terms <- c(
-#  "monitoring",
-#  "tracking",
-#  "vessel tracking",
-#  "satellite",
-#  "remote sensing",
-#  "AIS", "Automatic Identification System",
-#  "VMS", "Vessel Monitoring System",
-#  "observer data",
-#  "logbook data",
-#  "fisher survey*",
-#  "fishers survey*",
-#  "fisher interview*",
-#  "fishers interview*",
-#  "questionnaire*"
-#) |> unique() |> sort()
-
 # not interested in
 #exclude_terms <- c(
 #  "artisanal", "small-scale", "small scale", "subsistence",
 #  "aquaculture", "freshwater", "inland"
 #) |> unique() |> sort()
 
-# -------------------------
-# BUILD TWO QUERIES WITH write_search()
-# -------------------------
-# write_search()
-# Takes search terms grouped by concept group and writes Boolean searches in which terms within concept groups are separated by "OR" and concept groups are separated by "AND". 
 
-# RQ
+
+# 2. Build queries with edits automatically fitted by write_search() ------------
+# write_search() takes search terms grouped by concept group and writes Boolean 
+# searches in which terms within concept groups are separated by "OR" and concept 
+# groups are separated by "AND". 
+
+# 2.1. Build the string---------------------------------------------------------
 rq1_groups <- list(
   fleet_terms,
   region_terms,
@@ -190,6 +175,75 @@ rq1_bool <- litsearchr::write_search(
   stemming = FALSE,
   closure = "none",
   writesearch = FALSE
+)
+
+# 2.2. Check all changes done automatically-------------------------------------
+# helper: normalize terms so minor formatting differences don't hide matches
+norm_term <- function(x) {
+  x <- trimws(x)
+  x <- tolower(x)
+  x <- gsub("\\s+", " ", x)
+  x
+}
+
+# Extract terms inside a boolean string:
+#  - quoted phrases: "..."
+#  - unquoted tokens (no spaces): e.g. FAD*, trawl*, longline*
+extract_or_terms <- function(bool_string) {
+  s <- bool_string
+  
+  # 1) grab quoted phrases
+  quoted <- regmatches(s, gregexpr('"(?:\\\\.|[^"\\\\])*"', s, perl = TRUE))[[1]]
+  quoted <- gsub('^"|"$', "", quoted)  # remove quotes
+  
+  # 2) remove quoted phrases from string so they don't interfere
+  s2 <- gsub('"(?:\\\\.|[^"\\\\])*"', " ", s, perl = TRUE)
+  
+  # 3) split remaining by non-word-ish separators, keep wildcard tokens etc.
+  tokens <- unlist(strsplit(s2, "[()]", perl = TRUE))
+  tokens <- unlist(strsplit(paste(tokens, collapse=" "), "\\bAND\\b|\\bOR\\b", perl = TRUE))
+  tokens <- trimws(unlist(strsplit(paste(tokens, collapse=" "), "\\s+", perl = TRUE)))
+  
+  # remove empties and stopwords
+  tokens <- tokens[tokens != ""]
+  tokens <- tokens[!tokens %in% c("and", "or")]
+  
+  # keep only plausible search terms (contains letter/digit or * or quotes removed already)
+  tokens <- tokens[grepl("[a-z0-9\\*]", tokens)]
+  
+  unique(norm_term(c(quoted, tokens)))
+}
+
+# Input terms (your original intention)
+in_terms <- unique(norm_term(unlist(rq1_groups)))
+
+# Output terms (what write_search produced)
+out_terms <- extract_or_terms(rq1_bool)
+
+removed <- setdiff(in_terms, out_terms)
+added   <- setdiff(out_terms, in_terms)
+
+list(
+  n_input = length(in_terms),
+  n_output = length(out_terms),
+  removed = sort(removed),
+  added = sort(added)
+)
+
+
+
+# Change specific terms you want to keep despite that write_search() removes them:
+#rq1_bool <- gsub(
+#  "long\\s*[-–-]?\\s*line\\*",
+#  'longline* OR "long-line*"',
+#  rq1_bool,
+#  perl = TRUE)
+
+# Re-inject IUU into the impact block
+rq1_bool <- sub(
+  "\\)\\)\\s*$",
+  ' OR IUU* OR AIS*))',
+  rq1_bool
 )
 
 # -------------------------
@@ -216,11 +270,15 @@ scopus_rq1 <- paste0(
   " AND DOCTYPE(ar) AND PUBYEAR < 2026"
 )
 
-cat("\n--- WoS RQ1 ---\n",wos_rq1, "\n") # 1332
-cat("\n--- Scopus RQ1 ---\n",scopus_rq1, "\n") # 1310
 
-1332+1310 #2642
+cat("\n--- WoS RQ1 ---\n",wos_rq1, "\n") # 1879 #1887
+writeClipboard(wos_rq1)
 
+cat("\n--- Scopus RQ1 ---\n",scopus_rq1, "\n") # 1758 #1766
+writeClipboard(scopus_rq1)
+
+1871+1751 #3622
+1872+1758 #3632
 
 
 
@@ -290,3 +348,4 @@ cat(scholar_queries[["effort"]])
 cat(scholar_queries[["iuu"]])
 cat(scholar_queries[["ghost"]])
 cat(scholar_queries[["bycatch"]])
+
