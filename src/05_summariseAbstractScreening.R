@@ -34,35 +34,19 @@ rejected_colour <- "firebrick3"
 disagreement_colour <- "#E69F00"
 missing_colour <- "grey80"
 
-# Manual adjudication of reviewer disagreements. Replace NA_character_ with
-# "Accepted" or "Rejected" after inspecting each title, abstract and keywords.
-# Keep one row per Paper ID so progress can be completed one decision at a time.
+# Reviewer 3 completes this workbook manually. It is kept separate from the
+# final output so rerunning the script never overwrites the adjudications.
 adjudicator_name <- "DRG"
-adjudication_decisions <- tribble(
-  ~paperID, ~decision_reviewer_3, ~TA_exclCriteria_reviewer_3,
-  ~Topic_reviewer_3, ~TaxaGroup_reviewer_3, ~fishingGear_reviewer_3,
-  "1044", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "1282", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "134",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "1414", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "1498", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "1609", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "1666", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "1768", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "1804", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "1814", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "186",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "202",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "2156", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "295",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "310",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "361",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "474",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "484",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "524",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "560",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "818",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-  "936",  NA_character_, NA_character_, NA_character_, NA_character_, NA_character_
+reviewer3_file <- file.path(
+  output_data,
+  "abstract_screening_reviewer3.xlsx"
+)
+
+adjudication_columns <- c(
+  "paperID", "reviewer_3", "decision_reviewer_3",
+  "TA_exclCriteria_reviewer_3", "notes_reviewer_3",
+  "Topic_reviewer_3", "TaxaGroup_reviewer_3",
+  "fishingGear_reviewer_3"
 )
 
 
@@ -113,6 +97,75 @@ has_disagreement <- function(value_1, value_2, reviewer_2) {
     replace_na("<missing>")
 
   !is.na(reviewer_2) & value_1_clean != value_2_clean
+}
+
+clean_manual_value <- function(x) {
+  x %>%
+    as.character() %>%
+    str_replace_all("\u00a0", " ") %>%
+    str_squish() %>%
+    na_if("")
+}
+
+if (file.exists(reviewer3_file)) {
+  reviewer3_sheets <- excel_sheets(reviewer3_file)
+
+  if (!"final_screening" %in% reviewer3_sheets) {
+    stop(
+      basename(reviewer3_file),
+      " must contain a worksheet named final_screening."
+    )
+  }
+
+  adjudication_decisions <- read_excel(
+    reviewer3_file,
+    sheet = "final_screening",
+    col_types = "text"
+  )
+  names(adjudication_decisions) <- clean_names(
+    names(adjudication_decisions)
+  )
+
+  missing_adjudication_columns <- setdiff(
+    adjudication_columns,
+    names(adjudication_decisions)
+  )
+
+  if (length(missing_adjudication_columns) > 0) {
+    stop(
+      "Missing reviewer 3 column(s) in ", basename(reviewer3_file), ": ",
+      paste(missing_adjudication_columns, collapse = ", ")
+    )
+  }
+
+  adjudication_decisions <- adjudication_decisions %>%
+    select(all_of(adjudication_columns)) %>%
+    mutate(across(everything(), clean_manual_value)) %>%
+    filter(
+      !is.na(reviewer_3) |
+        if_any(-paperID, ~ !is.na(.x))
+    )
+
+  duplicated_adjudication_ids <- adjudication_decisions %>%
+    count(paperID, name = "n_rows") %>%
+    filter(is.na(paperID) | n_rows > 1)
+
+  if (nrow(duplicated_adjudication_ids) > 0) {
+    stop(
+      "Reviewer 3 adjudications must have one non-missing row per Paper ID."
+    )
+  }
+} else {
+  adjudication_decisions <- tibble(
+    paperID = character(),
+    reviewer_3 = character(),
+    decision_reviewer_3 = character(),
+    TA_exclCriteria_reviewer_3 = character(),
+    notes_reviewer_3 = character(),
+    Topic_reviewer_3 = character(),
+    TaxaGroup_reviewer_3 = character(),
+    fishingGear_reviewer_3 = character()
+  )
 }
 
 read_completed_file <- function(file) {
@@ -445,16 +498,15 @@ final_screening <- paper_metadata %>%
   ) %>%
   mutate(
     requires_adjudication = agreement_status == "Disagreement" |
-      disagreement_any_variable,
-    reviewer_3 = if_else(
-      requires_adjudication,
-      adjudicator_name,
-      NA_character_
-    ),
-    notes_reviewer_3 = NA_character_
+      disagreement_any_variable
   ) %>%
   left_join(adjudication_decisions, by = "paperID") %>%
   mutate(
+    reviewer_3 = if_else(
+      requires_adjudication,
+      coalesce(reviewer_3, adjudicator_name),
+      NA_character_
+    ),
     decision_reviewer_3 = if_else(
       requires_adjudication,
       decision_reviewer_3,
@@ -480,6 +532,11 @@ final_screening <- paper_metadata %>%
       fishingGear_reviewer_3,
       NA_character_
     ),
+    notes_reviewer_3 = if_else(
+      requires_adjudication,
+      notes_reviewer_3,
+      NA_character_
+    ),
     final_decision = case_when(
       !is.na(decision_reviewer_3) ~ decision_reviewer_3,
       agreement_status == "Accepted" ~ "Accepted",
@@ -487,6 +544,7 @@ final_screening <- paper_metadata %>%
       TRUE ~ NA_character_
     ),
     TA_exclCriteria_final = case_when(
+      final_decision == "Accepted" ~ NA_character_,
       disagreement_TA_exclCriteria &
         !is.na(TA_exclCriteria_reviewer_3) ~ TA_exclCriteria_reviewer_3,
       !disagreement_TA_exclCriteria ~ coalesce(
@@ -496,11 +554,13 @@ final_screening <- paper_metadata %>%
       TRUE ~ NA_character_
     ),
     Topic_final = case_when(
+      final_decision == "Rejected" ~ NA_character_,
       disagreement_Topic & !is.na(Topic_reviewer_3) ~ Topic_reviewer_3,
       !disagreement_Topic ~ coalesce(Topic_reviewer_1, Topic_reviewer_2),
       TRUE ~ NA_character_
     ),
     TaxaGroup_final = case_when(
+      final_decision == "Rejected" ~ NA_character_,
       disagreement_TaxaGroup &
         !is.na(TaxaGroup_reviewer_3) ~ TaxaGroup_reviewer_3,
       !disagreement_TaxaGroup ~ coalesce(
@@ -510,6 +570,7 @@ final_screening <- paper_metadata %>%
       TRUE ~ NA_character_
     ),
     fishingGear_final = case_when(
+      final_decision == "Rejected" ~ NA_character_,
       disagreement_fishingGear &
         !is.na(fishingGear_reviewer_3) ~ fishingGear_reviewer_3,
       !disagreement_fishingGear ~ coalesce(
@@ -541,18 +602,46 @@ final_screening <- paper_metadata %>%
   ) %>%
   arrange(suppressWarnings(as.numeric(paperID)), paperID)
 
+if (file.exists(reviewer3_file)) {
+  unresolved_decision_ids <- final_screening %>%
+    filter(
+      agreement_status == "Disagreement",
+      is.na(decision_reviewer_3)
+    ) %>%
+    pull(paperID)
+
+  if (length(unresolved_decision_ids) > 0) {
+    stop(
+      "Missing reviewer 3 decision for Paper ID(s): ",
+      paste(unresolved_decision_ids, collapse = ", ")
+    )
+  }
+}
+
+# Replace the provisional policy count with the adjudicated result whenever a
+# reviewer 3 workbook is available.
+overall_summary <- overall_summary %>%
+  mutate(
+    value = if_else(
+      metric == "Papers proceeding to next phase",
+      sum(final_screening$proceeds_to_next_phase, na.rm = TRUE),
+      value
+    )
+  )
+
 variable_disagreements <- final_screening %>%
   filter(disagreement_any_variable) %>%
   select(
     paperID, title, abstract, keywords,
-    reviewer_1, reviewer_2,
+    reviewer_1, decision_reviewer_1,
+    reviewer_2, decision_reviewer_2,
     disagreement_TA_exclCriteria,
     TA_exclCriteria_reviewer_1, TA_exclCriteria_reviewer_2,
     disagreement_Topic, Topic_reviewer_1, Topic_reviewer_2,
     disagreement_TaxaGroup, TaxaGroup_reviewer_1, TaxaGroup_reviewer_2,
     disagreement_fishingGear,
     fishingGear_reviewer_1, fishingGear_reviewer_2,
-    reviewer_3,
+    reviewer_3, decision_reviewer_3, notes_reviewer_3,
     TA_exclCriteria_reviewer_3, Topic_reviewer_3,
     TaxaGroup_reviewer_3, fishingGear_reviewer_3,
     TA_exclCriteria_final, Topic_final, TaxaGroup_final, fishingGear_final
@@ -715,6 +804,21 @@ if (nrow(disagreement_reviews) > 0) {
 
 # 7. Export results -----------------------------------------------------------
 
+if (!file.exists(reviewer3_file)) {
+  write_xlsx(
+    list(
+      "final_screening" = final_screening,
+      "variable_disagreements" = variable_disagreements
+    ),
+    reviewer3_file
+  )
+
+  message(
+    "Reviewer 3 template created at: ", reviewer3_file, "\n",
+    "Complete it and rerun the script to apply the adjudications."
+  )
+}
+
 write_xlsx(
   list(
     "overall_summary" = overall_summary,
@@ -731,8 +835,8 @@ write_xlsx(
   file.path(output_dir, "abstract_screening_summary.xlsx")
 )
 
-# Standalone dataset for downstream screening. Re-run the script after adding
-# manual decisions to adjudication_decisions to update final_decision.
+# Standalone adjudicated dataset for downstream screening. This never
+# overwrites abstract_screening_reviewer3.xlsx.
 write_xlsx(
   list(
     "final_screening" = final_screening,
@@ -745,7 +849,7 @@ message(
   "Done! Results saved in: ", output_dir, "\n",
   "Unique papers in this subset: ", nrow(paper_summary), "\n",
   "Proceeding to next phase: ",
-  sum(paper_summary$proceeds_to_next_phase, na.rm = TRUE), "\n",
+  sum(final_screening$proceeds_to_next_phase, na.rm = TRUE), "\n",
   "Disagreements requiring resolution: ",
   sum(paper_summary$agreement_status == "Disagreement")
 )
