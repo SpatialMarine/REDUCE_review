@@ -263,7 +263,7 @@ gold_doi_mamamls <- c(
 )
 
 # filter gold ones:
-gold_tbl <- tibble(doi = gold_doi_iuu)
+gold_tbl <- tibble(doi = gold_doi_mamamls)
 gold_check <- gold_tbl %>%
   mutate(in_dataset = doi %in% all$doi)
 sum(gold_check$in_dataset)
@@ -279,6 +279,22 @@ gold_check %>% filter(!in_dataset)
 
 
 # 3. structure the dataframe and export-----------------------------------------
+
+# Consolidate the active gold-paper lists so later screening stages can audit
+# whether every expected paper was retained. A DOI can belong to more than one
+# gold category.
+gold_papers <- bind_rows(
+  tibble(gold_category = "Fishing effort", doi = gold_doi_effort),
+  tibble(gold_category = "IUU fishing", doi = gold_doi_iuu),
+  tibble(gold_category = "Ghost gear", doi = gold_doi_ghost),
+  tibble(gold_category = "Seabirds", doi = gold_doi_birds),
+  tibble(gold_category = "Pelagic elasmobranchs", doi = gold_doi_pela),
+  tibble(gold_category = "Demersal elasmobranchs", doi = gold_doi_dem),
+  tibble(gold_category = "Sea turtles", doi = gold_doi_turt)
+) %>%
+  mutate(doi = clean_doi(doi)) %>%
+  distinct(gold_category, doi)
+
 all_keep <- all %>%
   mutate(
     paperID = row_number()) %>%
@@ -312,6 +328,12 @@ write.xlsx(
   all_keep,
   file = paste0(dir,"/paperList.xlsx"),
   overwrite = TRUE)
+
+write.xlsx(
+  gold_papers,
+  file = paste0(dir, "/goldPapers.xlsx"),
+  overwrite = TRUE
+)
 
 # export as ris:
 library(dplyr)
