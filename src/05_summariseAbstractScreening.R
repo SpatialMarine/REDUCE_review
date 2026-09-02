@@ -34,21 +34,35 @@ rejected_colour <- "firebrick3"
 disagreement_colour <- "#E69F00"
 missing_colour <- "grey80"
 
-# Manual adjudication of reviewer disagreements. Add one row per disagreement
-# after inspecting the title, abstract and keywords. Only Accepted or Rejected
-# are valid values. Leave this table empty until decisions have been made.
+# Manual adjudication of reviewer disagreements. Replace NA_character_ with
+# "Accepted" or "Rejected" after inspecting each title, abstract and keywords.
+# Keep one row per Paper ID so progress can be completed one decision at a time.
 adjudicator_name <- "DRG"
-adjudication_decisions <- tibble(
-  paperID = character(),
-  decision_reviewer_3 = character()
+adjudication_decisions <- tribble(
+  ~paperID, ~decision_reviewer_3,
+  "1044",   NA_character_,
+  "1282",   NA_character_,
+  "134",    NA_character_,
+  "1414",   NA_character_,
+  "1498",   NA_character_,
+  "1609",   NA_character_,
+  "1666",   NA_character_,
+  "1768",   NA_character_,
+  "1804",   NA_character_,
+  "1814",   NA_character_,
+  "186",    NA_character_,
+  "202",    NA_character_,
+  "2156",   NA_character_,
+  "295",    NA_character_,
+  "310",    NA_character_,
+  "361",    NA_character_,
+  "474",    NA_character_,
+  "484",    NA_character_,
+  "524",    NA_character_,
+  "560",    NA_character_,
+  "818",    NA_character_,
+  "936",    NA_character_
 )
-
-# Example:
-# adjudication_decisions <- tribble(
-#   ~paperID, ~decision_reviewer_3,
-#   "1044",  "Accepted",
-#   "1282",  "Rejected"
-# )
 
 
 # 2. Read and standardise completed files -------------------------------------
@@ -273,7 +287,10 @@ if (any(paper_summary$n_reviewers > 2)) {
 
 valid_adjudication_decisions <- c("Accepted", "Rejected")
 invalid_adjudication_decisions <- adjudication_decisions %>%
-  filter(!decision_reviewer_3 %in% valid_adjudication_decisions)
+  filter(
+    !is.na(decision_reviewer_3),
+    !decision_reviewer_3 %in% valid_adjudication_decisions
+  )
 
 if (nrow(invalid_adjudication_decisions) > 0) {
   stop(
