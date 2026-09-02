@@ -12,6 +12,7 @@ library(tidyr)
 library(stringr)
 library(ggplot2)
 library(writexl)
+library(openxlsx)
 
 
 # 1. Settings -----------------------------------------------------------------
@@ -25,6 +26,21 @@ screening_file <- file.path(
 topic_assignment_file <- file.path(
   output_data,
   "abstract_screening_topic_assignments.xlsx"
+)
+
+taxa_assignment_file <- file.path(
+  output_data,
+  "abstract_screening_taxa_assignments.xlsx"
+)
+
+gear_assignment_file <- file.path(
+  output_data,
+  "abstract_screening_fishingGear_assignments.xlsx"
+)
+
+exclusion_assignment_file <- file.path(
+  output_data,
+  "abstract_screening_exclusion_assignments.xlsx"
 )
 
 gold_papers_file <- file.path(
@@ -230,6 +246,102 @@ add_unclassified <- function(
   bind_rows(category_data, unclassified)
 }
 
+# Manual correction workbooks are cumulative. Existing rows and user-entered
+# values are preserved; only previously unseen Paper IDs are appended.
+update_assignment_workbook <- function(file, sheet, candidates) {
+  if (nrow(candidates) == 0) {
+    return(invisible(0L))
+  }
+
+  if (!file.exists(file)) {
+    openxlsx::write.xlsx(
+      setNames(list(candidates), sheet),
+      file,
+      overwrite = TRUE
+    )
+    return(invisible(nrow(candidates)))
+  }
+
+  if (!sheet %in% excel_sheets(file)) {
+    stop(basename(file), " must contain a worksheet named ", sheet, ".")
+  }
+
+  existing <- read_excel(file, sheet = sheet, col_types = "text") %>%
+    mutate(paperID = str_squish(paperID))
+
+  if (anyDuplicated(existing$paperID)) {
+    stop(basename(file), " contains duplicated Paper IDs.")
+  }
+
+  missing_existing_columns <- setdiff(names(existing), names(candidates))
+  for (column in missing_existing_columns) {
+    candidates[[column]] <- NA_character_
+  }
+
+  new_rows <- candidates %>%
+    anti_join(existing %>% select(paperID), by = "paperID") %>%
+    select(all_of(names(existing)))
+
+  if (nrow(new_rows) == 0) {
+    return(invisible(0L))
+  }
+
+  workbook <- openxlsx::loadWorkbook(file)
+  openxlsx::writeData(
+    workbook,
+    sheet = sheet,
+    x = new_rows,
+    startRow = nrow(existing) + 2,
+    colNames = FALSE,
+    keepNA = FALSE
+  )
+  openxlsx::saveWorkbook(workbook, file, overwrite = TRUE)
+
+  message(
+    "Appended ", nrow(new_rows), " new Paper ID(s) to: ", file
+  )
+  invisible(nrow(new_rows))
+}
+
+read_assignment_workbook <- function(
+    file,
+    sheet,
+    assignment_column,
+    notes_column) {
+  if (!file.exists(file)) {
+    return(tibble(
+      paperID = character(),
+      manual_value = character(),
+      manual_notes = character()
+    ))
+  }
+
+  data <- read_excel(file, sheet = sheet, col_types = "text")
+  required <- c("paperID", assignment_column, notes_column)
+  missing <- setdiff(required, names(data))
+
+  if (length(missing) > 0) {
+    stop(
+      "Missing column(s) in ", basename(file), ": ",
+      paste(missing, collapse = ", ")
+    )
+  }
+
+  data <- data %>%
+    transmute(
+      paperID = str_squish(paperID),
+      manual_value = clean_category(.data[[assignment_column]]),
+      manual_notes = clean_category(.data[[notes_column]])
+    ) %>%
+    filter(!is.na(paperID))
+
+  if (anyDuplicated(data$paperID)) {
+    stop(basename(file), " contains duplicated Paper IDs.")
+  }
+
+  data
+}
+
 accepted_papers <- final_screening %>%
   filter(final_decision == "Accepted")
 
@@ -242,6 +354,27 @@ rejected_papers <- final_screening %>%
 original_missing_topic_ids <- accepted_papers %>%
   filter(is.na(clean_category(Topic_final))) %>%
   pull(paperID)
+
+topic_assignment_candidates <- accepted_papers %>%
+  filter(paperID %in% original_missing_topic_ids) %>%
+  select(any_of(c(
+    "paperID", "title", "abstract", "keywords", "authors", "year", "doi",
+    "reviewer_1", "Topic_reviewer_1", "reviewer_2", "Topic_reviewer_2",
+    "reviewer_3", "Topic_reviewer_3"
+  ))) %>%
+  mutate(
+    Topic_assignment = NA_character_,
+    Topic_assignment_notes = NA_character_,
+    TaxaGroup_assignment = NA_character_,
+    fishingGear_assignment = NA_character_
+  ) %>%
+  arrange(suppressWarnings(as.numeric(paperID)), paperID)
+
+update_assignment_workbook(
+  topic_assignment_file,
+  "topic_assignments",
+  topic_assignment_candidates
+)
 
 if (file.exists(topic_assignment_file)) {
   if (!"topic_assignments" %in% excel_sheets(topic_assignment_file)) {
@@ -300,9 +433,9 @@ if (file.exists(topic_assignment_file)) {
   )
 
   if (length(unknown_assignment_ids) > 0) {
-    stop(
-      "Topic assignments were supplied for Paper IDs that do not require ",
-      "them: ", paste(unknown_assignment_ids, collapse = ", ")
+    message(
+      "Retaining existing topic assignments for Paper ID(s) no longer ",
+      "flagged as missing: ", paste(unknown_assignment_ids, collapse = ", ")
     )
   }
 
@@ -358,21 +491,45 @@ topic_assignment_required <- accepted_papers %>%
   ))) %>%
   arrange(suppressWarnings(as.numeric(paperID)), paperID)
 
-if (!file.exists(topic_assignment_file) &&
-    nrow(topic_assignment_required) > 0) {
-  write_xlsx(
-    list("topic_assignments" = topic_assignment_required),
-    topic_assignment_file
-  )
+exclusion_assignment_candidates <- rejected_papers %>%
+  filter(is.na(clean_category(TA_exclCriteria_final))) %>%
+  select(any_of(c(
+    "paperID", "title", "abstract", "keywords", "authors", "year", "doi",
+    "reviewer_1", "TA_exclCriteria_reviewer_1",
+    "reviewer_2", "TA_exclCriteria_reviewer_2",
+    "reviewer_3", "TA_exclCriteria_reviewer_3"
+  ))) %>%
+  mutate(
+    TA_exclCriteria_assignment = NA_character_,
+    TA_exclCriteria_assignment_notes = NA_character_
+  ) %>%
+  arrange(suppressWarnings(as.numeric(paperID)), paperID)
 
-  message(
-    "Topic-assignment template created at: ", topic_assignment_file, "\n",
-    "Complete Topic_assignment and rerun this script."
-  )
-}
+update_assignment_workbook(
+  exclusion_assignment_file,
+  "exclusion_assignments",
+  exclusion_assignment_candidates
+)
+
+exclusion_corrections <- read_assignment_workbook(
+  exclusion_assignment_file,
+  "exclusion_assignments",
+  "TA_exclCriteria_assignment",
+  "TA_exclCriteria_assignment_notes"
+)
+
+rejected_papers <- rejected_papers %>%
+  left_join(exclusion_corrections, by = "paperID") %>%
+  mutate(
+    TA_exclCriteria_for_full_text = coalesce(
+      manual_value,
+      TA_exclCriteria_final
+    )
+  ) %>%
+  select(-manual_value, -manual_notes)
 
 exclusion_membership <- rejected_papers %>%
-  expand_categories("TA_exclCriteria_final", normalise_exclusion) %>%
+  expand_categories("TA_exclCriteria_for_full_text", normalise_exclusion) %>%
   add_unclassified(rejected_papers)
 
 topic_membership <- accepted_papers %>%
@@ -387,9 +544,85 @@ megafauna_papers <- accepted_papers %>%
     by = "paperID"
   )
 
+taxa_assignment_candidates <- megafauna_papers %>%
+  filter(is.na(clean_category(TaxaGroup_for_full_text))) %>%
+  select(any_of(c(
+    "paperID", "title", "abstract", "keywords", "authors", "year", "doi",
+    "Topic_for_full_text",
+    "reviewer_1", "TaxaGroup_reviewer_1",
+    "reviewer_2", "TaxaGroup_reviewer_2",
+    "reviewer_3", "TaxaGroup_reviewer_3"
+  ))) %>%
+  mutate(
+    TaxaGroup_assignment = NA_character_,
+    TaxaGroup_assignment_notes = NA_character_
+  ) %>%
+  arrange(suppressWarnings(as.numeric(paperID)), paperID)
+
+update_assignment_workbook(
+  taxa_assignment_file,
+  "taxa_assignments",
+  taxa_assignment_candidates
+)
+
+taxa_corrections <- read_assignment_workbook(
+  taxa_assignment_file,
+  "taxa_assignments",
+  "TaxaGroup_assignment",
+  "TaxaGroup_assignment_notes"
+)
+
+megafauna_papers <- megafauna_papers %>%
+  left_join(taxa_corrections, by = "paperID") %>%
+  mutate(
+    TaxaGroup_for_full_text = coalesce(
+      manual_value,
+      TaxaGroup_for_full_text
+    )
+  ) %>%
+  select(-manual_value, -manual_notes)
+
 taxa_membership <- megafauna_papers %>%
   expand_categories("TaxaGroup_for_full_text", normalise_taxa) %>%
   add_unclassified(megafauna_papers)
+
+gear_assignment_candidates <- accepted_papers %>%
+  filter(is.na(clean_category(fishingGear_for_full_text))) %>%
+  select(any_of(c(
+    "paperID", "title", "abstract", "keywords", "authors", "year", "doi",
+    "Topic_for_full_text",
+    "reviewer_1", "fishingGear_reviewer_1",
+    "reviewer_2", "fishingGear_reviewer_2",
+    "reviewer_3", "fishingGear_reviewer_3"
+  ))) %>%
+  mutate(
+    fishingGear_assignment = NA_character_,
+    fishingGear_assignment_notes = NA_character_
+  ) %>%
+  arrange(suppressWarnings(as.numeric(paperID)), paperID)
+
+update_assignment_workbook(
+  gear_assignment_file,
+  "fishingGear_assignments",
+  gear_assignment_candidates
+)
+
+gear_corrections <- read_assignment_workbook(
+  gear_assignment_file,
+  "fishingGear_assignments",
+  "fishingGear_assignment",
+  "fishingGear_assignment_notes"
+)
+
+accepted_papers <- accepted_papers %>%
+  left_join(gear_corrections, by = "paperID") %>%
+  mutate(
+    fishingGear_for_full_text = coalesce(
+      manual_value,
+      fishingGear_for_full_text
+    )
+  ) %>%
+  select(-manual_value, -manual_notes)
 
 gear_membership <- accepted_papers %>%
   expand_categories("fishingGear_for_full_text", normalise_gear) %>%
@@ -409,7 +642,7 @@ category_counts <- list(
 category_standardisation_audit <- bind_rows(
   audit_categories(
     rejected_papers,
-    "TA_exclCriteria_final",
+    "TA_exclCriteria_for_full_text",
     "Exclusion criteria",
     normalise_exclusion
   ),
@@ -604,6 +837,13 @@ p_gear <- plot_category_counts(
   "accepted_papers_by_fishing_gear.png"
 )
 
+# Explicit printing ensures every plot is displayed when the script is sourced
+# from RStudio, not only when commands are run line by line.
+print(p_exclusion)
+print(p_topic)
+print(p_taxa)
+print(p_gear)
+
 if (nrow(gold_summary) > 0) {
   p_gold <- gold_summary %>%
     mutate(
@@ -650,6 +890,8 @@ if (nrow(gold_summary) > 0) {
     height = 6,
     dpi = 300
   )
+
+  print(p_gold)
 }
 
 
@@ -750,5 +992,11 @@ message(
   "Topic workbooks created: ", length(topic_categories), "\n",
   "Accepted papers still requiring a topic: ",
   nrow(topic_assignment_required), "\n",
+  "Megafauna papers still requiring a taxonomic group: ",
+  sum(taxa_membership$category == "Unclassified"), "\n",
+  "Accepted papers still requiring fishing gear: ",
+  sum(gear_membership$category == "Unclassified"), "\n",
+  "Rejected papers still requiring an exclusion criterion: ",
+  sum(exclusion_membership$category == "Unclassified"), "\n",
   "Gold papers requiring attention: ", nrow(gold_attention)
 )
