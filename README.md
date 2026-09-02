@@ -52,7 +52,12 @@ bar plot per screening variable, and exports:
 - one workbook per standardised topic for full-text assignment.
 
 These files are saved under `output/full_text_screening/`. Accepted papers with
-no topic are retained in a separate `Unclassified` workbook.
+no topic are written to `output/abstract_screening_topic_assignments.xlsx` for
+manual classification. Complete its `Topic_assignment` column and rerun the
+script; the file is treated as a manual input and is never overwritten.
+
+Taxonomic-group summaries include only accepted papers classified under
+`Megafauna catch`.
 
 ### Data availability
 
