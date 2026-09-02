@@ -65,6 +65,18 @@ The gold-paper DOI lists defined in `src/02_Handling_RIS.R` are exported to
 screening decisions and writes a gold-paper audit and outcome plot under
 `output/full_text_screening/`, warning if any gold paper was rejected or absent.
 
+Manual correction workbooks are cumulative. On each run, the script appends
+newly detected Paper IDs without deleting or replacing existing user-entered
+values:
+
+- `output/abstract_screening_topic_assignments.xlsx`
+- `output/abstract_screening_taxa_assignments.xlsx`
+- `output/abstract_screening_fishingGear_assignments.xlsx`
+- `output/abstract_screening_exclusion_assignments.xlsx`
+
+All generated plots are explicitly printed when the script is sourced in
+RStudio as well as being saved to disk.
+
 ### Data availability
 
 See Data availability statement in the published article
