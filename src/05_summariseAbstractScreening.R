@@ -313,22 +313,44 @@ if (length(unknown_adjudication_ids) > 0) {
 }
 
 reviewer_slots <- reviews %>%
-  select(paperID, rev1_name, decision) %>%
+  transmute(
+    paperID,
+    reviewer_name = rev1_name,
+    decision,
+    TA_exclCriteria = TA_exclCriteria_rev1,
+    notes,
+    Topic,
+    TaxaGroup,
+    fishingGear
+  ) %>%
   group_by(paperID) %>%
-  arrange(rev1_name, .by_group = TRUE) %>%
+  arrange(reviewer_name, .by_group = TRUE) %>%
   mutate(reviewer_number = row_number()) %>%
   ungroup() %>%
   pivot_wider(
     id_cols = paperID,
     names_from = reviewer_number,
-    values_from = c(rev1_name, decision),
+    values_from = c(
+      reviewer_name, decision, TA_exclCriteria, notes,
+      Topic, TaxaGroup, fishingGear
+    ),
     names_glue = "{.value}_{reviewer_number}"
   ) %>%
   rename(
-    reviewer_1 = rev1_name_1,
+    reviewer_1 = reviewer_name_1,
     decision_reviewer_1 = decision_1,
-    reviewer_2 = rev1_name_2,
-    decision_reviewer_2 = decision_2
+    TA_exclCriteria_reviewer_1 = TA_exclCriteria_1,
+    notes_reviewer_1 = notes_1,
+    Topic_reviewer_1 = Topic_1,
+    TaxaGroup_reviewer_1 = TaxaGroup_1,
+    fishingGear_reviewer_1 = fishingGear_1,
+    reviewer_2 = reviewer_name_2,
+    decision_reviewer_2 = decision_2,
+    TA_exclCriteria_reviewer_2 = TA_exclCriteria_2,
+    notes_reviewer_2 = notes_2,
+    Topic_reviewer_2 = Topic_2,
+    TaxaGroup_reviewer_2 = TaxaGroup_2,
+    fishingGear_reviewer_2 = fishingGear_2
   )
 
 metadata_cols <- c(
@@ -353,7 +375,12 @@ final_screening <- paper_metadata %>%
       agreement_status == "Disagreement",
       adjudicator_name,
       NA_character_
-    )
+    ),
+    TA_exclCriteria_reviewer_3 = NA_character_,
+    notes_reviewer_3 = NA_character_,
+    Topic_reviewer_3 = NA_character_,
+    TaxaGroup_reviewer_3 = NA_character_,
+    fishingGear_reviewer_3 = NA_character_
   ) %>%
   left_join(adjudication_decisions, by = "paperID") %>%
   mutate(
@@ -374,8 +401,14 @@ final_screening <- paper_metadata %>%
     paperID, title, abstract, keywords, authors, year, journal, volume, issue,
     start_page, end_page, doi, Language, document_type, source,
     reviewer_1, decision_reviewer_1,
+    TA_exclCriteria_reviewer_1, notes_reviewer_1, Topic_reviewer_1,
+    TaxaGroup_reviewer_1, fishingGear_reviewer_1,
     reviewer_2, decision_reviewer_2,
+    TA_exclCriteria_reviewer_2, notes_reviewer_2, Topic_reviewer_2,
+    TaxaGroup_reviewer_2, fishingGear_reviewer_2,
     reviewer_3, decision_reviewer_3,
+    TA_exclCriteria_reviewer_3, notes_reviewer_3, Topic_reviewer_3,
+    TaxaGroup_reviewer_3, fishingGear_reviewer_3,
     n_reviewers, agreement_status, final_decision, proceeds_to_next_phase
   ) %>%
   arrange(suppressWarnings(as.numeric(paperID)), paperID)
