@@ -53,11 +53,17 @@ bar plot per screening variable, and exports:
 
 These files are saved under `output/full_text_screening/`. Accepted papers with
 no topic are written to `output/abstract_screening_topic_assignments.xlsx` for
-manual classification. Complete its `Topic_assignment` column and rerun the
-script; the file is treated as a manual input and is never overwritten.
+manual classification. Complete `Topic_assignment` and, where relevant,
+`TaxaGroup_assignment` and `fishingGear_assignment`, then rerun the script. The
+file is treated as a manual input and is never overwritten.
 
 Taxonomic-group summaries include only accepted papers classified under
 `Megafauna catch`.
+
+The gold-paper DOI lists defined in `src/02_Handling_RIS.R` are exported to
+`input/rm_duplicates/goldPapers.xlsx`. Script 06 compares them with the final
+screening decisions and writes a gold-paper audit and outcome plot under
+`output/full_text_screening/`, warning if any gold paper was rejected or absent.
 
 ### Data availability
 
