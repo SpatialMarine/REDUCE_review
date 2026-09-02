@@ -39,7 +39,7 @@ missing_colour <- "grey80"
 adjudicator_name <- "DRG"
 reviewer3_file <- file.path(
   output_data,
-  "abstract_screening_reviewer3.xlsx"
+  "abstract_screening/abstract_screening_reviewer3.xlsx"
 )
 
 adjudication_columns <- c(
