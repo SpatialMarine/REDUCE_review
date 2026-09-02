@@ -151,11 +151,13 @@ paper_summary <- reviews %>%
       n_rejected > 0 ~ "Rejected",
       TRUE ~ "Incomplete"
     ),
-    proceeds_to_next_phase = case_when(
-      resolution_policy == "include_if_any_accept" ~ n_accepted > 0,
-      resolution_policy == "agreement_only" ~ n_accepted > 0 & n_rejected == 0,
-      TRUE ~ NA
-    )
+    proceeds_to_next_phase = if (resolution_policy == "include_if_any_accept") {
+      n_accepted > 0
+    } else if (resolution_policy == "agreement_only") {
+      n_accepted > 0 & n_rejected == 0
+    } else {
+      rep(NA, n())
+    }
   )
 
 paper_status_counts <- paper_summary %>%
@@ -205,12 +207,14 @@ reviewer_pairs <- overlap_reviews %>%
     overlap_reviews %>%
       select(paperID, rev1_name, decision),
     by = "paperID",
-    suffix = c("_1", "_2")
+    suffix = c("_1", "_2"),
+    relationship = "many-to-many"
   ) %>%
   filter(rev1_name_1 < rev1_name_2) %>%
   mutate(
     pair = paste(rev1_name_1, rev1_name_2, sep = " vs "),
-    agrees = !is.na(decision_1) & !is.na(decision_2) &
+    agrees = !is.na(decision_1) &
+      !is.na(decision_2) &
       decision_1 == decision_2
   )
 
@@ -295,6 +299,8 @@ p_overview <- ggplot(overview_plot_data, aes(x = metric, y = 1)) +
     plot.subtitle = element_text(colour = "grey35")
   )
 
+p_overview
+
 ggsave(
   file.path(output_dir, "screening_overview.png"),
   p_overview,
@@ -327,6 +333,8 @@ p_status <- ggplot(
     plot.title = element_text(face = "bold"),
     legend.position = "none"
   )
+
+p_status
 
 ggsave(
   file.path(output_dir, "unique_paper_outcomes.png"),
@@ -377,6 +385,7 @@ if (nrow(overlap_reviews) > 0) {
     dpi = 300,
     limitsize = FALSE
   )
+  p_overlap
 }
 
 
