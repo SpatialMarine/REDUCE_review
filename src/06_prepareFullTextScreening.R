@@ -22,6 +22,11 @@ screening_file <- file.path(
   "abstract_screening_final.xlsx"
 )
 
+topic_assignment_file <- file.path(
+  output_data,
+  "abstract_screening_topic_assignments.xlsx"
+)
+
 output_dir <- file.path(output_data, "full_text_screening")
 topic_output_dir <- file.path(output_dir, "by_topic")
 
@@ -31,6 +36,10 @@ dir.create(topic_output_dir, showWarnings = FALSE, recursive = TRUE)
 accepted_colour <- "seagreen3"
 rejected_colour <- "firebrick3"
 unclassified_colour <- "grey70"
+
+valid_topics <- c(
+  "Fishing effort", "IUU fishing", "Megafauna catch", "Ghost gear"
+)
 
 
 # 2. Read final abstract-screening dataset ------------------------------------
@@ -161,20 +170,25 @@ expand_categories <- function(data, column, normalise_function) {
     distinct(paperID, category)
 }
 
-audit_categories <- function(data, column, variable, normalise_function) {
+audit_categories <- function(
+    data,
+    column,
+    variable,
+    normalise_function,
+    missing_label = "Unclassified") {
   data %>%
     transmute(
       paperID,
       original_category = clean_category(.data[[column]]) %>%
-        replace_na("Unclassified") %>%
+        replace_na(missing_label) %>%
         str_replace_all("\\s*[/;|]\\s*", ",")
     ) %>%
     separate_longer_delim(original_category, delim = ",") %>%
     mutate(
       original_category = clean_category(original_category),
       standardised_category = if_else(
-        original_category == "Unclassified",
-        "Unclassified",
+        original_category == missing_label,
+        missing_label,
         normalise_function(original_category)
       ),
       variable = variable
@@ -186,11 +200,14 @@ audit_categories <- function(data, column, variable, normalise_function) {
     )
 }
 
-add_unclassified <- function(category_data, scope_data) {
+add_unclassified <- function(
+    category_data,
+    scope_data,
+    missing_label = "Unclassified") {
   unclassified <- scope_data %>%
     distinct(paperID) %>%
     anti_join(category_data %>% distinct(paperID), by = "paperID") %>%
-    mutate(category = "Unclassified")
+    mutate(category = missing_label)
 
   bind_rows(category_data, unclassified)
 }
@@ -201,17 +218,144 @@ accepted_papers <- final_screening %>%
 rejected_papers <- final_screening %>%
   filter(final_decision == "Rejected")
 
+# Topic assignments are kept in a separate manual workbook, following the same
+# principle as reviewer 3 adjudication: the script creates the template once
+# and never overwrites it.
+original_missing_topic_ids <- accepted_papers %>%
+  filter(is.na(clean_category(Topic_final))) %>%
+  pull(paperID)
+
+if (file.exists(topic_assignment_file)) {
+  if (!"topic_assignments" %in% excel_sheets(topic_assignment_file)) {
+    stop(
+      basename(topic_assignment_file),
+      " must contain a worksheet named topic_assignments."
+    )
+  }
+
+  topic_assignments <- read_excel(
+    topic_assignment_file,
+    sheet = "topic_assignments",
+    col_types = "text"
+  )
+
+  required_assignment_columns <- c(
+    "paperID", "Topic_assignment", "Topic_assignment_notes"
+  )
+  missing_assignment_columns <- setdiff(
+    required_assignment_columns,
+    names(topic_assignments)
+  )
+
+  if (length(missing_assignment_columns) > 0) {
+    stop(
+      "Missing topic-assignment column(s): ",
+      paste(missing_assignment_columns, collapse = ", ")
+    )
+  }
+
+  topic_assignments <- topic_assignments %>%
+    transmute(
+      paperID = str_squish(paperID),
+      Topic_assignment = normalise_topic(Topic_assignment),
+      Topic_assignment_notes = clean_category(Topic_assignment_notes)
+    ) %>%
+    filter(!is.na(paperID))
+
+  duplicated_assignment_ids <- topic_assignments %>%
+    count(paperID, name = "n_rows") %>%
+    filter(n_rows > 1)
+
+  if (nrow(duplicated_assignment_ids) > 0) {
+    stop(
+      "Topic assignments must contain one row per Paper ID. Duplicate(s): ",
+      paste(duplicated_assignment_ids$paperID, collapse = ", ")
+    )
+  }
+
+  unknown_assignment_ids <- setdiff(
+    topic_assignments$paperID,
+    original_missing_topic_ids
+  )
+
+  if (length(unknown_assignment_ids) > 0) {
+    stop(
+      "Topic assignments were supplied for Paper IDs that do not require ",
+      "them: ", paste(unknown_assignment_ids, collapse = ", ")
+    )
+  }
+
+  invalid_topic_assignments <- topic_assignments %>%
+    filter(
+      !is.na(Topic_assignment),
+      !Topic_assignment %in% valid_topics
+    )
+
+  if (nrow(invalid_topic_assignments) > 0) {
+    stop(
+      "Topic_assignment must be one of: ",
+      paste(valid_topics, collapse = ", "),
+      ". Check Paper ID(s): ",
+      paste(invalid_topic_assignments$paperID, collapse = ", ")
+    )
+  }
+} else {
+  topic_assignments <- tibble(
+    paperID = character(),
+    Topic_assignment = character(),
+    Topic_assignment_notes = character()
+  )
+}
+
+accepted_papers <- accepted_papers %>%
+  left_join(topic_assignments, by = "paperID") %>%
+  mutate(
+    Topic_final_original = Topic_final,
+    Topic_for_full_text = coalesce(Topic_assignment, Topic_final)
+  )
+
+topic_assignment_required <- accepted_papers %>%
+  filter(is.na(clean_category(Topic_for_full_text))) %>%
+  select(any_of(c(
+    "paperID", "title", "abstract", "keywords", "authors", "year", "doi",
+    "reviewer_1", "Topic_reviewer_1", "reviewer_2", "Topic_reviewer_2",
+    "reviewer_3", "Topic_reviewer_3",
+    "Topic_assignment", "Topic_assignment_notes"
+  ))) %>%
+  arrange(suppressWarnings(as.numeric(paperID)), paperID)
+
+if (!file.exists(topic_assignment_file) &&
+    nrow(topic_assignment_required) > 0) {
+  write_xlsx(
+    list("topic_assignments" = topic_assignment_required),
+    topic_assignment_file
+  )
+
+  message(
+    "Topic-assignment template created at: ", topic_assignment_file, "\n",
+    "Complete Topic_assignment and rerun this script."
+  )
+}
+
 exclusion_membership <- rejected_papers %>%
   expand_categories("TA_exclCriteria_final", normalise_exclusion) %>%
   add_unclassified(rejected_papers)
 
 topic_membership <- accepted_papers %>%
-  expand_categories("Topic_final", normalise_topic) %>%
-  add_unclassified(accepted_papers)
+  expand_categories("Topic_for_full_text", normalise_topic) %>%
+  add_unclassified(accepted_papers, "Unspecified")
 
-taxa_membership <- accepted_papers %>%
+# Taxonomic-group summaries are meaningful only for papers classified under
+# Megafauna catch.
+megafauna_papers <- accepted_papers %>%
+  semi_join(
+    topic_membership %>% filter(category == "Megafauna catch"),
+    by = "paperID"
+  )
+
+taxa_membership <- megafauna_papers %>%
   expand_categories("TaxaGroup_final", normalise_taxa) %>%
-  add_unclassified(accepted_papers)
+  add_unclassified(megafauna_papers)
 
 gear_membership <- accepted_papers %>%
   expand_categories("fishingGear_final", normalise_gear) %>%
@@ -237,12 +381,13 @@ category_standardisation_audit <- bind_rows(
   ),
   audit_categories(
     accepted_papers,
-    "Topic_final",
+    "Topic_for_full_text",
     "Topic",
-    normalise_topic
+    normalise_topic,
+    missing_label = "Unspecified"
   ),
   audit_categories(
-    accepted_papers,
+    megafauna_papers,
     "TaxaGroup_final",
     "Taxonomic group",
     normalise_taxa
@@ -263,7 +408,10 @@ plot_category_counts <- function(count_data, title, subtitle, colour, filename) 
     mutate(category = reorder(category, n_papers))
 
   p <- ggplot(plot_data, aes(x = category, y = n_papers)) +
-    geom_col(aes(fill = category == "Unclassified"), width = 0.7) +
+    geom_col(
+      aes(fill = category %in% c("Unclassified", "Unspecified")),
+      width = 0.7
+    ) +
     geom_text(
       aes(label = n_papers),
       hjust = -0.15,
@@ -322,7 +470,7 @@ p_topic <- plot_category_counts(
 p_taxa <- plot_category_counts(
   category_counts[["Taxonomic group"]],
   "Accepted papers by taxonomic group",
-  "A paper can contribute to more than one category",
+  "Only papers classified as Megafauna catch",
   accepted_colour,
   "accepted_papers_by_taxonomic_group.png"
 )
@@ -386,7 +534,10 @@ safe_filename <- function(x) {
     str_remove_all("^_|_$")
 }
 
-topic_categories <- sort(unique(topic_membership$category))
+topic_categories <- topic_membership$category %>%
+  unique() %>%
+  setdiff("Unspecified") %>%
+  sort()
 
 for (topic_name in topic_categories) {
   topic_papers <- topic_membership %>%
@@ -416,5 +567,7 @@ message(
   "Done! Full-text screening files saved in: ", output_dir, "\n",
   "Accepted papers: ", nrow(accepted_papers), "\n",
   "Rejected papers: ", nrow(rejected_papers), "\n",
-  "Topic workbooks created: ", length(topic_categories)
+  "Topic workbooks created: ", length(topic_categories), "\n",
+  "Accepted papers still requiring a topic: ",
+  nrow(topic_assignment_required)
 )
