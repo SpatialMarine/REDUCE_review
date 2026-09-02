@@ -34,6 +34,22 @@ rejected_colour <- "firebrick3"
 disagreement_colour <- "#E69F00"
 missing_colour <- "grey80"
 
+# Manual adjudication of reviewer disagreements. Add one row per disagreement
+# after inspecting the title, abstract and keywords. Only Accepted or Rejected
+# are valid values. Leave this table empty until decisions have been made.
+adjudicator_name <- "DRG"
+adjudication_decisions <- tibble(
+  paperID = character(),
+  decision_reviewer_3 = character()
+)
+
+# Example:
+# adjudication_decisions <- tribble(
+#   ~paperID, ~decision_reviewer_3,
+#   "1044",  "Accepted",
+#   "1282",  "Rejected"
+# )
+
 
 # 2. Read and standardise completed files -------------------------------------
 
@@ -135,6 +151,8 @@ paper_summary <- reviews %>%
   group_by(paperID) %>%
   summarise(
     title = first(na.omit(title), default = NA_character_),
+    abstract = first(na.omit(abstract), default = NA_character_),
+    keywords = first(na.omit(keywords), default = NA_character_),
     n_reviewers = n_distinct(rev1_name),
     reviewers = paste(sort(unique(rev1_name)), collapse = " | "),
     n_accepted = sum(decision == "Accepted", na.rm = TRUE),
@@ -244,7 +262,109 @@ disagreement_details <- overlap_reviews %>%
   arrange(paperID, rev1_name)
 
 
-# 5. Figures ------------------------------------------------------------------
+# 5. Create adjudication and final screening dataset --------------------------
+
+if (any(paper_summary$n_reviewers > 2)) {
+  stop(
+    "At least one paper has more than two initial reviewers. ",
+    "Reviewer 3 is reserved for manual adjudication."
+  )
+}
+
+valid_adjudication_decisions <- c("Accepted", "Rejected")
+invalid_adjudication_decisions <- adjudication_decisions %>%
+  filter(!decision_reviewer_3 %in% valid_adjudication_decisions)
+
+if (nrow(invalid_adjudication_decisions) > 0) {
+  stop(
+    "decision_reviewer_3 must contain only Accepted or Rejected. ",
+    "Invalid Paper ID(s): ",
+    paste(invalid_adjudication_decisions$paperID, collapse = ", ")
+  )
+}
+
+unknown_adjudication_ids <- setdiff(
+  adjudication_decisions$paperID,
+  paper_summary$paperID[paper_summary$agreement_status == "Disagreement"]
+)
+
+if (length(unknown_adjudication_ids) > 0) {
+  stop(
+    "Adjudication decisions were supplied for Paper IDs without a ",
+    "disagreement: ", paste(unknown_adjudication_ids, collapse = ", ")
+  )
+}
+
+reviewer_slots <- reviews %>%
+  select(paperID, rev1_name, decision) %>%
+  group_by(paperID) %>%
+  arrange(rev1_name, .by_group = TRUE) %>%
+  mutate(reviewer_number = row_number()) %>%
+  ungroup() %>%
+  pivot_wider(
+    id_cols = paperID,
+    names_from = reviewer_number,
+    values_from = c(rev1_name, decision),
+    names_glue = "{.value}_{reviewer_number}"
+  ) %>%
+  rename(
+    reviewer_1 = rev1_name_1,
+    decision_reviewer_1 = decision_1,
+    reviewer_2 = rev1_name_2,
+    decision_reviewer_2 = decision_2
+  )
+
+metadata_cols <- c(
+  "paperID", "authors", "year", "journal", "volume", "issue",
+  "start_page", "end_page", "doi", "Language", "document_type", "source",
+  "title", "abstract", "keywords"
+)
+
+paper_metadata <- reviews %>%
+  select(any_of(metadata_cols)) %>%
+  distinct(paperID, .keep_all = TRUE)
+
+final_screening <- paper_metadata %>%
+  left_join(reviewer_slots, by = "paperID") %>%
+  left_join(
+    paper_summary %>%
+      select(paperID, n_reviewers, agreement_status),
+    by = "paperID"
+  ) %>%
+  mutate(
+    reviewer_3 = if_else(
+      agreement_status == "Disagreement",
+      adjudicator_name,
+      NA_character_
+    )
+  ) %>%
+  left_join(adjudication_decisions, by = "paperID") %>%
+  mutate(
+    decision_reviewer_3 = if_else(
+      agreement_status == "Disagreement",
+      decision_reviewer_3,
+      NA_character_
+    ),
+    final_decision = case_when(
+      !is.na(decision_reviewer_3) ~ decision_reviewer_3,
+      agreement_status == "Accepted" ~ "Accepted",
+      agreement_status == "Rejected" ~ "Rejected",
+      TRUE ~ NA_character_
+    ),
+    proceeds_to_next_phase = final_decision == "Accepted"
+  ) %>%
+  select(
+    paperID, title, abstract, keywords, authors, year, journal, volume, issue,
+    start_page, end_page, doi, Language, document_type, source,
+    reviewer_1, decision_reviewer_1,
+    reviewer_2, decision_reviewer_2,
+    reviewer_3, decision_reviewer_3,
+    n_reviewers, agreement_status, final_decision, proceeds_to_next_phase
+  ) %>%
+  arrange(suppressWarnings(as.numeric(paperID)), paperID)
+
+
+# 6. Figures ------------------------------------------------------------------
 
 overview_plot_data <- bind_rows(
   overall_summary %>%
@@ -344,15 +464,21 @@ ggsave(
   dpi = 300
 )
 
-if (nrow(overlap_reviews) > 0) {
-  overlap_order <- paper_summary %>%
-    filter(n_reviewers > 1) %>%
+disagreement_reviews <- reviews %>%
+  semi_join(
+    paper_summary %>% filter(agreement_status == "Disagreement"),
+    by = "paperID"
+  )
+
+if (nrow(disagreement_reviews) > 0) {
+  disagreement_order <- paper_summary %>%
+    filter(agreement_status == "Disagreement") %>%
     arrange(suppressWarnings(as.numeric(paperID)), paperID) %>%
     pull(paperID)
 
-  p_overlap <- overlap_reviews %>%
+  p_disagreement <- disagreement_reviews %>%
     mutate(
-      paperID = factor(paperID, levels = rev(overlap_order)),
+      paperID = factor(paperID, levels = rev(disagreement_order)),
       rev1_name = str_squish(rev1_name)
     ) %>%
     ggplot(aes(x = rev1_name, y = paperID, fill = decision)) +
@@ -363,7 +489,7 @@ if (nrow(overlap_reviews) > 0) {
       name = "Decision"
     ) +
     labs(
-      title = "Decisions for Paper IDs screened by multiple reviewers",
+      title = "Reviewer decisions requiring adjudication",
       x = NULL,
       y = "Paper ID"
     ) +
@@ -375,21 +501,24 @@ if (nrow(overlap_reviews) > 0) {
       legend.position = "right"
     )
 
-  overlap_height <- max(6, min(20, 2 + length(overlap_order) * 0.22))
+  disagreement_height <- max(
+    6,
+    min(12, 2 + length(disagreement_order) * 0.30)
+  )
 
   ggsave(
     file.path(output_dir, "overlap_decisions_by_reviewer.png"),
-    p_overlap,
-    width = 12,
-    height = overlap_height,
+    p_disagreement,
+    width = 10,
+    height = disagreement_height,
     dpi = 300,
     limitsize = FALSE
   )
-  p_overlap
+  p_disagreement
 }
 
 
-# 6. Export results -----------------------------------------------------------
+# 7. Export results -----------------------------------------------------------
 
 write_xlsx(
   list(
@@ -398,11 +527,19 @@ write_xlsx(
     "paper_status_counts" = paper_status_counts,
     "paper_summary" = paper_summary,
     "reviews_clean" = reviews,
+    "final_screening" = final_screening,
     "disagreement_details" = disagreement_details,
     "pairwise_agreement" = pairwise_agreement,
     "duplicate_review_rows" = duplicate_review_rows
   ),
   file.path(output_dir, "abstract_screening_summary.xlsx")
+)
+
+# Standalone dataset for downstream screening. Re-run the script after adding
+# manual decisions to adjudication_decisions to update final_decision.
+write_xlsx(
+  list("final_screening" = final_screening),
+  file.path(output_dir, "abstract_screening_final.xlsx")
 )
 
 message(
