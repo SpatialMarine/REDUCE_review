@@ -29,6 +29,21 @@ Title...
 | *fun* | custom functions used into different scripts in `src` folder |
 | *src* |  Source R scripts for data processing, statistical analysis, and visualization. |
 
+### Abstract-screening adjudication
+
+`src/05_summariseAbstractScreening.R` uses a separate workbook for manual
+adjudication so reviewer decisions are never overwritten by generated output:
+
+1. If `output/abstract_screening_reviewer3.xlsx` does not exist, the script
+   creates it as a reviewer 3 template.
+2. Complete the `reviewer_3` columns in its `final_screening` worksheet.
+3. Rerun the script. Reviewer 3 values resolve disagreements and the adjudicated
+   dataset is written to
+   `output/abstract_screening/abstract_screening_final.xlsx`.
+
+The reviewer 3 workbook is treated as a manual input and is not overwritten on
+subsequent runs.
+
 ### Data availability
 
 See Data availability statement in the published article
