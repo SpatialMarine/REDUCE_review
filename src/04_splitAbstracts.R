@@ -7,6 +7,8 @@
 #--------------------------------------------------------------------------------
 library(readxl)
 library(dplyr)
+library(openxlsx)
+library(writexl)
 
 # 1. Load paper list------------------------------------------------------------
 list <- read_excel(  file.path(input_data, "rm_duplicates", "paperList.xlsx"))
@@ -32,11 +34,11 @@ list_updated <- list %>%
 
 # 2. Split them by participants-------------------------------------------------
 reviewers <- c(
-  "DFF", "ISM", "LNH", "NPS", "PGU", "TM", "EM", 
+  "DFF", "ISM", "LNH", "NPS", "PGU", "TM", "EM", "JOB",
   "DRG", "CS", "ABC", "AEP", "GA", "DK", "CL")
 
 length(reviewers)
-# 14
+# 15
 
 set.seed(123)
 papers <- list_updated  # or your object name
@@ -141,7 +143,6 @@ reviewer_datasets[["DRG"]]
 
 
 # Export
-library(writexl)
 output_dir <- file.path(input_data, "abstracts_byReviewer")
 dir.create(output_dir, showWarnings = FALSE)
 
@@ -168,3 +169,258 @@ for(r in reviewers){
     file.path(output_dir, paste0("Abstracts_", r, ".xlsx"))
   )
 }
+
+
+# 3. Add other extra spreadsheets-----------------------------------------------
+# Copy the "dropDown" and "Criteria" worksheets from the template workbook
+# (CriteriaTrial_DRG.xlsm) into every reviewer workbook, preserving formatting,
+# data validation, drop-down lists, conditional formatting, etc.
+#
+# This script uses Microsoft Excel through PowerShell, so Excel must be
+# installed on the computer.
+
+
+# Define input and output folders
+# Folder containing all reviewer workbooks
+reviewer_dir <- file.path(input_data, "abstracts_byReviewer")
+
+# Template workbook containing the worksheets to copy
+criteria_file <- file.path(input_data, "CriteriaTrial/CriteriaTrial_DRG.xlsm")
+
+# Output folder (original files are left untouched)
+output_dir <- file.path(input_data, "abstracts_byReviewer_withCriteria")
+dir.create(output_dir, showWarnings = FALSE)
+
+# Recreate output folder
+unlink(output_dir, recursive = TRUE)
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Find reviewer files
+reviewer_files <- list.files(
+  reviewer_dir,
+  pattern = "^Abstracts_.*\\.xlsx$",
+  full.names = TRUE
+)
+
+# Safety checks
+stopifnot(file.exists(criteria_file))
+stopifnot(length(reviewer_files) > 0)
+
+# Convert paths for PowerShell
+criteria_file_ps  <- normalizePath(criteria_file, winslash = "\\", mustWork = TRUE)
+output_dir_ps <- normalizePath(output_dir, winslash = "\\", mustWork = FALSE)
+reviewer_files_ps <- normalizePath(reviewer_files, winslash = "\\", mustWork = TRUE)
+
+
+# Build PowerShell script
+ps_code <- c(
+  paste0("$criteria_file = '", criteria_file_ps, "'"),
+  paste0("$output_dir = '", output_dir_ps, "'"),
+  "$files = @(",
+  paste0("'", reviewer_files_ps, "'", collapse = ",\n"),
+  ")",
+  "$sheets_to_copy = @('dropDown', 'Criteria')",
+  "",
+  "$excel = New-Object -ComObject Excel.Application",
+  "$excel.Visible = $false",
+  "$excel.DisplayAlerts = $false",
+  "",
+  "$template_wb = $excel.Workbooks.Open($criteria_file)",
+  "",
+  "foreach ($file in $files) {",
+  "  Write-Host 'Processing:' $file",
+  "",
+  "  $out_file = Join-Path $output_dir (Split-Path $file -Leaf)",
+  "  Copy-Item $file $out_file -Force",
+  "",
+  "  $target_wb = $excel.Workbooks.Open($out_file)",
+  "",
+  "  foreach ($sh in $sheets_to_copy) {",
+  "",
+  "    foreach ($ws in @($target_wb.Worksheets)) {",
+  "      if ($ws.Name -eq $sh) { $ws.Delete() }",
+  "    }",
+  "",
+  "    $after_sheet = $target_wb.Worksheets.Item($target_wb.Worksheets.Count)",
+  "    $template_wb.Worksheets.Item($sh).Copy([System.Type]::Missing, $after_sheet)",
+  "    $excel.ActiveSheet.Name = $sh",
+  "",
+  "  }",
+  "",
+  "  $target_wb.Save()",
+  "  $target_wb.Close($false)",
+  "}",
+  "",
+  "$template_wb.Close($false)",
+  "$excel.Quit()"
+)
+
+# Write and run PowerShell script
+ps_script <- file.path(tempdir(), "copy_excel_sheets.ps1")
+writeLines(ps_code, ps_script)
+
+system2(
+  "powershell",
+  args = c("-ExecutionPolicy", "Bypass", "-File", shQuote(ps_script))
+)
+
+# Check output
+list.files(output_dir)
+
+
+
+
+# 4. Add the dropdown option----------------------------------------------------
+output_dir <- file.path(input_data, "abstracts_byReviewer_withCriteria")
+
+files <- list.files(
+  output_dir,
+  pattern = "^Abstracts_.*\\.xlsx$",
+  full.names = TRUE
+)
+
+for (f in files) {
+  
+  message("Adding dropdowns to: ", basename(f))
+  
+  wb <- loadWorkbook(f)
+  
+  # Sheet where reviewers will work
+  main_sheet <- names(wb)[1]
+  
+  # Read headers from first row
+  headers <- read.xlsx(f, sheet = main_sheet, rows = 1, colNames = FALSE)
+  headers <- as.character(headers[1, ])
+  
+  # Add fishingGear column if it does not exist
+  if (!"fishingGear" %in% headers) {
+    data_main <- read.xlsx(f, sheet = main_sheet)
+    data_main$fishingGear <- NA
+    
+    removeWorksheet(wb, main_sheet)
+    addWorksheet(wb, main_sheet)
+    writeData(wb, main_sheet, data_main)
+    
+    headers <- names(data_main)
+  }
+  
+  # Reload workbook after possible rewrite
+  saveWorkbook(wb, f, overwrite = TRUE)
+  wb <- loadWorkbook(f)
+  headers <- names(read.xlsx(f, sheet = main_sheet))
+  
+  # Identify columns
+  col_decision <- which(headers == "TA_decisionRev1")
+  col_excl     <- which(headers == "TA_exclCriteria_rev1")
+  col_topic    <- which(headers == "Topic")
+  col_taxa     <- which(headers == "TaxaGroup")
+  col_gear     <- which(headers == "fishingGear")
+  
+  # Number of rows to apply dropdowns to
+  n_rows <- nrow(read.xlsx(f, sheet = main_sheet)) + 1
+  
+  # Apply dropdowns using ranges from dropDown sheet
+  dataValidation(wb, main_sheet,
+                 cols = col_decision,
+                 rows = 2:n_rows,
+                 type = "list",
+                 value = "'dropDown'!$B$3:$B$4")
+  
+  dataValidation(wb, main_sheet,
+                 cols = col_excl,
+                 rows = 2:n_rows,
+                 type = "list",
+                 value = "'dropDown'!$C$3:$C$9")
+  
+  dataValidation(wb, main_sheet,
+                 cols = col_topic,
+                 rows = 2:n_rows,
+                 type = "list",
+                 value = "'dropDown'!$E$3:$E$6")
+  
+  dataValidation(wb, main_sheet,
+                 cols = col_taxa,
+                 rows = 2:n_rows,
+                 type = "list",
+                 value = "'dropDown'!$F$3:$F$6")
+  
+  dataValidation(wb, main_sheet,
+                 cols = col_gear,
+                 rows = 2:n_rows,
+                 type = "list",
+                 value = "'dropDown'!$G$3:$G$5")
+  
+  saveWorkbook(wb, f, overwrite = TRUE)
+}
+
+
+
+
+# 5. Add format also the sheet1-------------------------------------------------
+template_file <- file.path(
+  input_data,
+  "abstracts_byReviewer_withCriteria",
+  "Abstracts_ABC.xlsx"   # or whichever file has the correct header
+)
+
+files <- list.files(
+  output_dir,
+  pattern = "^Abstracts_.*\\.xlsx$",
+  full.names = TRUE
+)
+
+stopifnot(file.exists(template_file))
+stopifnot(length(files) > 0)
+
+# Read template workbook
+template_file_ps <- normalizePath(template_file, winslash = "\\", mustWork = TRUE)
+files_ps <- normalizePath(files, winslash = "\\", mustWork = TRUE)
+
+ps_code <- c(
+  paste0("$template_file = '", template_file_ps, "'"),
+  "$files = @(",
+  paste0("'", files_ps, "'", collapse = ",\n"),
+  ")",
+  "",
+  "$excel = New-Object -ComObject Excel.Application",
+  "$excel.Visible = $false",
+  "$excel.DisplayAlerts = $false",
+  "",
+  "$template_wb = $excel.Workbooks.Open($template_file)",
+  "$template_ws = $template_wb.Worksheets.Item(1)",
+  "",
+  "foreach ($file in $files) {",
+  "  if ($file -eq $template_file) { continue }",
+  "",
+  "  Write-Host 'Formatting:' $file",
+  "",
+  "  $target_wb = $excel.Workbooks.Open($file)",
+  "  $target_ws = $target_wb.Worksheets.Item(1)",
+  "",
+  "  # Copy formatting from rows 1 and 2",
+  "  $template_ws.Rows('1:2').Copy()",
+  "  $target_ws.Rows('1:2').PasteSpecial(-4122)",  # xlPasteFormats
+  "",
+  "  # Copy column widths",
+  "  $template_ws.Rows('1:2').Copy()",
+  "  $target_ws.Rows('1:2').PasteSpecial(8)",      # xlPasteColumnWidths
+  "",
+  "  # Copy row heights",
+  "  $target_ws.Rows.Item(1).RowHeight = $template_ws.Rows.Item(1).RowHeight",
+  "  $target_ws.Rows.Item(2).RowHeight = $template_ws.Rows.Item(2).RowHeight",
+  "",
+  "  $target_wb.Save()",
+  "  $target_wb.Close($false)",
+  "}",
+  "",
+  "$template_wb.Close($false)",
+  "$excel.Quit()"
+)
+
+ps_script <- file.path(tempdir(), "copy_header_style.ps1")
+writeLines(ps_code, ps_script)
+
+system2(
+  "powershell",
+  args = c("-ExecutionPolicy", "Bypass", "-File", shQuote(ps_script))
+)
