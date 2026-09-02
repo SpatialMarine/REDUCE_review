@@ -44,6 +44,16 @@ adjudication so reviewer decisions are never overwritten by generated output:
 The reviewer 3 workbook is treated as a manual input and is not overwritten on
 subsequent runs.
 
+After adjudication, `src/06_prepareFullTextScreening.R` reads the generated
+`abstract_screening_final.xlsx`, standardises the final categories, creates one
+bar plot per screening variable, and exports:
+
+- one workbook containing all accepted papers; and
+- one workbook per standardised topic for full-text assignment.
+
+These files are saved under `output/full_text_screening/`. Accepted papers with
+no topic are retained in a separate `Unclassified` workbook.
+
 ### Data availability
 
 See Data availability statement in the published article
