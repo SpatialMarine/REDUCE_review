@@ -704,6 +704,18 @@ if (file.exists(gold_papers_file)) {
           paperID,
           doi = clean_doi(doi),
           title,
+          reviewer_1,
+          decision_reviewer_1,
+          TA_exclCriteria_reviewer_1,
+          notes_reviewer_1,
+          reviewer_2,
+          decision_reviewer_2,
+          TA_exclCriteria_reviewer_2,
+          notes_reviewer_2,
+          reviewer_3,
+          decision_reviewer_3,
+          TA_exclCriteria_reviewer_3,
+          notes_reviewer_3,
           final_decision,
           TA_exclCriteria_final,
           Topic_for_screening = Topic_final,
@@ -719,6 +731,20 @@ if (file.exists(gold_papers_file)) {
         final_decision == "Accepted" ~ "Accepted",
         final_decision == "Rejected" ~ "Rejected",
         TRUE ~ "Missing final decision"
+      ),
+      excluded_by_reviewers = apply(
+        cbind(
+          if_else(decision_reviewer_1 == "Rejected", reviewer_1, NA_character_),
+          if_else(decision_reviewer_2 == "Rejected", reviewer_2, NA_character_),
+          if_else(decision_reviewer_3 == "Rejected", reviewer_3, NA_character_)
+        ),
+        1,
+        function(x) {
+          excluded_by <- unique(na.omit(x))
+          if (length(excluded_by) == 0) NA_character_ else {
+            paste(excluded_by, collapse = ", ")
+          }
+        }
       )
     ) %>%
     arrange(gold_screening_status, gold_categories, doi)
