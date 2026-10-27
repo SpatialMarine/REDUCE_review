@@ -816,6 +816,14 @@ reviewer3_updated_file <- file.path(
 )
 
 current_adjudications <- final_screening %>%
+  left_join(adjudication_decisions, by = "paperID", suffix = c("", "_historical")) %>%
+  mutate(
+    across(
+      all_of(setdiff(adjudication_columns, "paperID")),
+      ~ coalesce(.x, .data[[paste0(cur_column(), "_historical")]])
+    )
+  ) %>%
+  select(-ends_with("_historical")) %>%
   mutate(
     adjudication_status = case_when(
       !requires_adjudication ~ "No longer required",
