@@ -460,10 +460,12 @@ unknown_adjudication_ids <- setdiff(
   required_adjudication_ids
 )
 
+# Keep historical adjudications even if reviewers subsequently agree.
+# They remain in the Reviewer 3 history, but are not applied to current results.
 if (length(unknown_adjudication_ids) > 0) {
-  stop(
-    "Adjudication entries were supplied for Paper IDs without any ",
-    "disagreement: ", paste(unknown_adjudication_ids, collapse = ", ")
+  message(
+    "Historical adjudications no longer required: ",
+    paste(unknown_adjudication_ids, collapse = ", ")
   )
 }
 
@@ -602,20 +604,20 @@ final_screening <- paper_metadata %>%
   ) %>%
   arrange(suppressWarnings(as.numeric(paperID)), paperID)
 
-if (file.exists(reviewer3_file)) {
-  unresolved_decision_ids <- final_screening %>%
-    filter(
-      agreement_status == "Disagreement",
-      is.na(decision_reviewer_3)
-    ) %>%
-    pull(paperID)
+# Pending decisions are expected while Reviewer 3 is still working.
+# Export them rather than stopping before the updated workbook is created.
+unresolved_decision_ids <- final_screening %>%
+  filter(
+    agreement_status == "Disagreement",
+    is.na(decision_reviewer_3)
+  ) %>%
+  pull(paperID)
 
-  if (length(unresolved_decision_ids) > 0) {
-    stop(
-      "Missing reviewer 3 decision for Paper ID(s): ",
-      paste(unresolved_decision_ids, collapse = ", ")
-    )
-  }
+if (length(unresolved_decision_ids) > 0) {
+  warning(
+    "Reviewer 3 decisions still pending for Paper ID(s): ",
+    paste(unresolved_decision_ids, collapse = ", ")
+  )
 }
 
 # Replace the provisional policy count with the adjudicated result whenever a
@@ -800,6 +802,67 @@ if (nrow(disagreement_reviews) > 0) {
   )
   p_disagreement
 }
+
+
+# 7. Prepare the incremental Reviewer 3 workbook -----------------------------
+#
+# The manually edited reviewer3_file is NEVER overwritten. Each run produces
+# a separate, up-to-date workbook that can be checked before replacing it.
+# Existing adjudications are matched by paperID, not by row position.
+# Historical decisions remain visible even when the disagreement disappears.
+
+reviewer3_updated_file <- file.path(
+  output_dir, "abstract_screening_reviewer3_updated.xlsx"
+)
+
+current_adjudications <- final_screening %>%
+  mutate(
+    adjudication_status = case_when(
+      !requires_adjudication ~ "No longer required",
+      !is.na(decision_reviewer_3) ~ "Resolved",
+      agreement_status == "Disagreement" ~ "Pending decision",
+      TRUE ~ "Pending variables"
+    )
+  )
+
+# Keep any older paper that is no longer in the current screening subset.
+historical_adjudications <- adjudication_decisions %>%
+  filter(!paperID %in% current_adjudications$paperID) %>%
+  mutate(adjudication_status = "Historical - paper not in current subset")
+
+# Keep the same column structure when adding historical rows.
+for (column in setdiff(names(current_adjudications), names(historical_adjudications))) {
+  historical_adjudications[[column]] <- NA
+}
+
+reviewer3_updated <- bind_rows(
+  current_adjudications,
+  historical_adjudications %>% select(all_of(names(current_adjudications)))
+) %>%
+  arrange(suppressWarnings(as.numeric(paperID)), paperID)
+
+# One paper must appear only once in the editable sheet.
+stopifnot(!anyDuplicated(reviewer3_updated$paperID))
+
+adjudication_history <- adjudication_decisions %>%
+  mutate(
+    current_disagreement = paperID %in% required_adjudication_ids,
+    in_current_subset = paperID %in% final_screening$paperID
+  )
+
+write_xlsx(
+  list(
+    "final_screening" = reviewer3_updated,
+    "variable_disagreements" = variable_disagreements,
+    "adjudication_history" = adjudication_history
+  ),
+  reviewer3_updated_file
+)
+
+message(
+  "Reviewer 3 updated workbook saved at: ", reviewer3_updated_file, "\\n",
+  "The original Reviewer 3 workbook has not been modified."
+)
 
 
 # 7. Export results -----------------------------------------------------------
