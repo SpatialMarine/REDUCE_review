@@ -820,7 +820,7 @@ current_adjudications <- final_screening %>%
   mutate(
     across(
       all_of(setdiff(adjudication_columns, "paperID")),
-      ~ coalesce(.x, .data[[paste0(cur_column(), "_historical")]])
+      ~ coalesce(.x, pick(all_of(paste0(cur_column(), "_historical")))[[1]])
     )
   ) %>%
   select(-ends_with("_historical")) %>%
