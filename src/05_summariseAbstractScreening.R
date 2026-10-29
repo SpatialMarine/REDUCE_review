@@ -14,6 +14,11 @@ library(stringr)
 library(ggplot2)
 library(writexl)
 
+# relationship in reviewer_pairs requires dplyr 1.1.1 or later.
+if (packageVersion("dplyr") < "1.1.1") {
+  stop("Please install dplyr 1.1.1 or later.")
+}
+
 
 # 1. Settings -----------------------------------------------------------------
 
@@ -260,7 +265,7 @@ paper_summary <- reviews %>%
   ) %>%
   mutate(
     agreement_status = case_when(
-      n_missing > 0 ~ "Incomplete",
+      n_reviewers < 2 | n_missing > 0 ~ "Incomplete",
       n_accepted > 0 & n_rejected > 0 ~ "Disagreement",
       n_accepted > 0 ~ "Accepted",
       n_rejected > 0 ~ "Rejected",
@@ -406,7 +411,17 @@ reviewer_slots <- reviews %>%
       Topic, TaxaGroup, fishingGear
     ),
     names_glue = "{.value}_{reviewer_number}"
-  ) %>%
+  )
+
+# A subset may contain only single-reviewer papers.
+for (column in c("reviewer_name", "decision", "TA_exclCriteria", "notes",
+                 "Topic", "TaxaGroup", "fishingGear")) {
+  if (!paste0(column, "_2") %in% names(reviewer_slots)) {
+    reviewer_slots[[paste0(column, "_2")]] <- rep(NA_character_, nrow(reviewer_slots))
+  }
+}
+
+reviewer_slots <- reviewer_slots %>%
   rename(
     reviewer_1 = reviewer_name_1,
     decision_reviewer_1 = decision_1,
@@ -451,7 +466,8 @@ reviewer_slots <- reviews %>%
   )
 
 required_adjudication_ids <- union(
-  paper_summary$paperID[paper_summary$agreement_status == "Disagreement"],
+  paper_summary$paperID[paper_summary$agreement_status %in%
+                         c("Disagreement", "Incomplete")],
   reviewer_slots$paperID[reviewer_slots$disagreement_any_variable]
 )
 
@@ -477,7 +493,7 @@ missing_adjudication_ids <- setdiff(
 if (length(missing_adjudication_ids) > 0) {
   warning(
     "Add these Paper IDs to adjudication_decisions to resolve all ",
-    "disagreements: ", paste(sort(missing_adjudication_ids), collapse = ", ")
+    "required adjudications: ", paste(sort(missing_adjudication_ids), collapse = ", ")
   )
 }
 
@@ -499,8 +515,14 @@ final_screening <- paper_metadata %>%
     by = "paperID"
   ) %>%
   mutate(
-    requires_adjudication = agreement_status == "Disagreement" |
-      disagreement_any_variable
+    requires_adjudication = agreement_status %in% c("Disagreement", "Incomplete") |
+      disagreement_any_variable,
+    adjudication_reason = case_when(
+      agreement_status == "Incomplete" ~ "Incomplete screening",
+      agreement_status == "Disagreement" ~ "Decision disagreement",
+      disagreement_any_variable ~ "Variable disagreement",
+      TRUE ~ NA_character_
+    )
   ) %>%
   left_join(adjudication_decisions, by = "paperID") %>%
   mutate(
@@ -547,8 +569,7 @@ final_screening <- paper_metadata %>%
     ),
     TA_exclCriteria_final = case_when(
       final_decision == "Accepted" ~ NA_character_,
-      disagreement_TA_exclCriteria &
-        !is.na(TA_exclCriteria_reviewer_3) ~ TA_exclCriteria_reviewer_3,
+      !is.na(TA_exclCriteria_reviewer_3) ~ TA_exclCriteria_reviewer_3,
       !disagreement_TA_exclCriteria ~ coalesce(
         TA_exclCriteria_reviewer_1,
         TA_exclCriteria_reviewer_2
@@ -557,14 +578,13 @@ final_screening <- paper_metadata %>%
     ),
     Topic_final = case_when(
       final_decision == "Rejected" ~ NA_character_,
-      disagreement_Topic & !is.na(Topic_reviewer_3) ~ Topic_reviewer_3,
+      !is.na(Topic_reviewer_3) ~ Topic_reviewer_3,
       !disagreement_Topic ~ coalesce(Topic_reviewer_1, Topic_reviewer_2),
       TRUE ~ NA_character_
     ),
     TaxaGroup_final = case_when(
       final_decision == "Rejected" ~ NA_character_,
-      disagreement_TaxaGroup &
-        !is.na(TaxaGroup_reviewer_3) ~ TaxaGroup_reviewer_3,
+      !is.na(TaxaGroup_reviewer_3) ~ TaxaGroup_reviewer_3,
       !disagreement_TaxaGroup ~ coalesce(
         TaxaGroup_reviewer_1,
         TaxaGroup_reviewer_2
@@ -573,8 +593,7 @@ final_screening <- paper_metadata %>%
     ),
     fishingGear_final = case_when(
       final_decision == "Rejected" ~ NA_character_,
-      disagreement_fishingGear &
-        !is.na(fishingGear_reviewer_3) ~ fishingGear_reviewer_3,
+      !is.na(fishingGear_reviewer_3) ~ fishingGear_reviewer_3,
       !disagreement_fishingGear ~ coalesce(
         fishingGear_reviewer_1,
         fishingGear_reviewer_2
@@ -582,6 +601,34 @@ final_screening <- paper_metadata %>%
       TRUE ~ NA_character_
     ),
     proceeds_to_next_phase = final_decision == "Accepted"
+  ) %>%
+  mutate(
+    pending_decision = agreement_status %in% c("Disagreement", "Incomplete") &
+      is.na(decision_reviewer_3),
+    pending_TA_exclCriteria = disagreement_TA_exclCriteria &
+      coalesce(final_decision == "Rejected", FALSE) &
+      is.na(TA_exclCriteria_final),
+    pending_Topic = disagreement_Topic &
+      coalesce(final_decision == "Accepted", FALSE) & is.na(Topic_final),
+    pending_TaxaGroup = disagreement_TaxaGroup &
+      coalesce(final_decision == "Accepted", FALSE) & is.na(TaxaGroup_final),
+    pending_fishingGear = disagreement_fishingGear &
+      coalesce(final_decision == "Accepted", FALSE) & is.na(fishingGear_final),
+    adjudication_status = case_when(
+      !requires_adjudication ~ "No longer required",
+      pending_decision ~ "Pending decision",
+      pending_TA_exclCriteria | pending_Topic | pending_TaxaGroup |
+        pending_fishingGear ~ "Pending variables",
+      TRUE ~ "Resolved"
+    ),
+    pending_fields = pmap_chr(
+      list(pending_decision, pending_TA_exclCriteria, pending_Topic,
+           pending_TaxaGroup, pending_fishingGear),
+      function(...) {
+        paste(c("decision_reviewer_3", "TA_exclCriteria", "Topic",
+                "TaxaGroup", "fishingGear")[c(...)], collapse = " | ")
+      }
+    )
   ) %>%
   select(
     paperID, title, abstract, keywords, authors, year, journal, volume, issue,
@@ -597,7 +644,8 @@ final_screening <- paper_metadata %>%
     TaxaGroup_reviewer_3, fishingGear_reviewer_3,
     disagreement_TA_exclCriteria, disagreement_Topic,
     disagreement_TaxaGroup, disagreement_fishingGear,
-    disagreement_any_variable, requires_adjudication,
+    disagreement_any_variable, requires_adjudication, adjudication_reason,
+    adjudication_status, pending_fields, starts_with("pending_"),
     n_reviewers, agreement_status,
     final_decision, TA_exclCriteria_final, Topic_final,
     TaxaGroup_final, fishingGear_final, proceeds_to_next_phase
@@ -608,8 +656,7 @@ final_screening <- paper_metadata %>%
 # Export them rather than stopping before the updated workbook is created.
 unresolved_decision_ids <- final_screening %>%
   filter(
-    agreement_status == "Disagreement",
-    is.na(decision_reviewer_3)
+    pending_decision
   ) %>%
   pull(paperID)
 
@@ -618,6 +665,14 @@ if (length(unresolved_decision_ids) > 0) {
     "Reviewer 3 decisions still pending for Paper ID(s): ",
     paste(unresolved_decision_ids, collapse = ", ")
   )
+}
+
+adjudication_pending <- final_screening %>%
+  filter(adjudication_status %in% c("Pending decision", "Pending variables"))
+
+if (nrow(adjudication_pending) > 0) {
+  warning("Adjudications still pending: ", nrow(adjudication_pending),
+          ". See the adjudication_pending worksheet for pending fields.")
 }
 
 # Replace the provisional policy count with the adjudicated result whenever a
@@ -816,22 +871,17 @@ reviewer3_updated_file <- file.path(
 )
 
 current_adjudications <- final_screening %>%
-  left_join(adjudication_decisions, by = "paperID", suffix = c("", "_historical")) %>%
-  mutate(
-    across(
-      all_of(setdiff(adjudication_columns, "paperID")),
-      ~ coalesce(.x, .data[[paste0(cur_column(), "_historical")]])
-    )
-  ) %>%
-  select(-ends_with("_historical")) %>%
-  mutate(
-    adjudication_status = case_when(
-      !requires_adjudication ~ "No longer required",
-      !is.na(decision_reviewer_3) ~ "Resolved",
-      agreement_status == "Disagreement" ~ "Pending decision",
-      TRUE ~ "Pending variables"
-    )
+  left_join(adjudication_decisions, by = "paperID", suffix = c("", "_historical"))
+
+# Use an explicit column loop: no dynamic cur_column() inside pick().
+for (column in setdiff(adjudication_columns, "paperID")) {
+  current_adjudications[[column]] <- coalesce(
+    current_adjudications[[column]],
+    current_adjudications[[paste0(column, "_historical")]]
   )
+}
+current_adjudications <- current_adjudications %>%
+  select(-ends_with("_historical"))
 
 # Keep any older paper that is no longer in the current screening subset.
 historical_adjudications <- adjudication_decisions %>%
@@ -840,7 +890,9 @@ historical_adjudications <- adjudication_decisions %>%
 
 # Keep the same column structure when adding historical rows.
 for (column in setdiff(names(current_adjudications), names(historical_adjudications))) {
-  historical_adjudications[[column]] <- NA
+  historical_adjudications[[column]] <- rep(NA, nrow(historical_adjudications))
+  storage.mode(historical_adjudications[[column]]) <-
+    storage.mode(current_adjudications[[column]])
 }
 
 reviewer3_updated <- bind_rows(
@@ -861,6 +913,7 @@ adjudication_history <- adjudication_decisions %>%
 write_xlsx(
   list(
     "final_screening" = reviewer3_updated,
+    "adjudication_pending" = adjudication_pending,
     "variable_disagreements" = variable_disagreements,
     "adjudication_history" = adjudication_history
   ),
@@ -879,6 +932,7 @@ if (!file.exists(reviewer3_file)) {
   write_xlsx(
     list(
       "final_screening" = final_screening,
+      "adjudication_pending" = adjudication_pending,
       "variable_disagreements" = variable_disagreements
     ),
     reviewer3_file
@@ -898,6 +952,7 @@ write_xlsx(
     "paper_summary" = paper_summary,
     "reviews_clean" = reviews,
     "final_screening" = final_screening,
+    "adjudication_pending" = adjudication_pending,
     "variable_disagreements" = variable_disagreements,
     "disagreement_details" = disagreement_details,
     "pairwise_agreement" = pairwise_agreement,
@@ -911,6 +966,7 @@ write_xlsx(
 write_xlsx(
   list(
     "final_screening" = final_screening,
+    "adjudication_pending" = adjudication_pending,
     "variable_disagreements" = variable_disagreements
   ),
   file.path(output_dir, "abstract_screening_final.xlsx")
@@ -921,6 +977,5 @@ message(
   "Unique papers in this subset: ", nrow(paper_summary), "\n",
   "Proceeding to next phase: ",
   sum(final_screening$proceeds_to_next_phase, na.rm = TRUE), "\n",
-  "Disagreements requiring resolution: ",
-  sum(paper_summary$agreement_status == "Disagreement")
+  "Adjudications still pending: ", nrow(adjudication_pending)
 )
