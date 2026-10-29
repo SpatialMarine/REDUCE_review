@@ -40,19 +40,22 @@ rows <- do.call(rbind, list(
   review("3", "A", "Accepted"), review("3", "B", "Rejected"),
   review("4", "A", "Rejected", criterion = "x"),
   review("4", "B", "Rejected", criterion = "y"),
-  review("5", "A", "Accepted", "old"),
+  review("5", "A", NA_character_, "old"),
   review("6", "A", "Accepted"), review("6", "B", NA_character_),
   review("7", "A", "Rejected"), review("7", "B", "Rejected"),
   review("8", "A", "Accepted", "x", "fish", "net"),
   review("8", "B", "Accepted", "y", "bird", "line"),
   review("9", "A", "Accepted", "x"), review("9", "B", "Rejected", "y"),
   review("10", "A", "Rejected", criterion = "x"),
-  review("10", "B", NA_character_, criterion = "y")
+  review("10", "B", NA_character_, criterion = "y"),
+  review("11", "A", "Accepted", "single topic"),
+  review("12", "A", "Rejected", criterion = "single criterion")
 ))
 write_xlsx(list(screening = rows), file.path(done, "reviews.xlsx"))
 first <- run_screening(input, output)
 stopifnot(nrow(first$historical_adjudications) == 0,
           all(c("5", "6", "10") %in% first$required_adjudication_ids),
+          !any(c("11", "12") %in% first$required_adjudication_ids),
           first$final_screening$adjudication_status[1] == "No longer required")
 
 manual <- first$final_screening[, first$adjudication_columns]
@@ -81,6 +84,14 @@ stopifnot(
   get("8", "pending_fields") == "TaxaGroup | fishingGear",
   get("9", "adjudication_status") == "Resolved", is.na(get("9", "Topic_final")),
   get("10", "TA_exclCriteria_final") == "new criterion",
+  get("11", "agreement_status") == "Accepted",
+  get("11", "final_decision") == "Accepted",
+  get("11", "Topic_final") == "single topic",
+  !get("11", "requires_adjudication"), get("11", "pending_fields") == "",
+  get("12", "agreement_status") == "Rejected",
+  get("12", "final_decision") == "Rejected",
+  get("12", "TA_exclCriteria_final") == "single criterion",
+  !get("12", "requires_adjudication"), get("12", "pending_fields") == "",
   identical(as.character(tools::md5sum(first$reviewer3_file)), as.character(original_hash)),
   second$current_adjudications$decision_reviewer_3[second$current_adjudications$paperID == "7"] == "Accepted",
   second$historical_adjudications$paperID == "99"
@@ -101,8 +112,12 @@ fourth <- run_screening(input, output)
 stopifnot(identical(second$reviewer3_updated, fourth$reviewer3_updated))
 
 # All papers have just one initial reviewer: pivot still supplies slot 2.
-write_xlsx(list(screening = rows[rows$paperID == "5", ]), file.path(done, "reviews.xlsx"))
+write_xlsx(list(screening = rows[rows$paperID %in% c("5", "11", "12"), ]),
+           file.path(done, "reviews.xlsx"))
 single <- run_screening(input, file.path(root, "single-output"))
-stopifnot(single$final_screening$agreement_status == "Incomplete",
-          single$final_screening$pending_fields == "decision_reviewer_3")
+stopifnot(identical(single$final_screening$agreement_status,
+                    c("Incomplete", "Accepted", "Rejected")),
+          identical(single$required_adjudication_ids, "5"),
+          identical(single$adjudication_pending$paperID, "5"),
+          single$final_screening$pending_fields[1] == "decision_reviewer_3")
 cat("Reviewer 3 regression tests passed.\n")

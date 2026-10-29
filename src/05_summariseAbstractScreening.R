@@ -265,7 +265,7 @@ paper_summary <- reviews %>%
   ) %>%
   mutate(
     agreement_status = case_when(
-      n_reviewers < 2 | n_missing > 0 ~ "Incomplete",
+      n_missing > 0 ~ "Incomplete",
       n_accepted > 0 & n_rejected > 0 ~ "Disagreement",
       n_accepted > 0 ~ "Accepted",
       n_rejected > 0 ~ "Rejected",
