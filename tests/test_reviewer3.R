@@ -120,4 +120,86 @@ stopifnot(identical(single$final_screening$agreement_status,
           identical(single$required_adjudication_ids, "5"),
           identical(single$adjudication_pending$paperID, "5"),
           single$final_screening$pending_fields[1] == "decision_reviewer_3")
-cat("Reviewer 3 regression tests passed.\n")
+
+# Explicit additional reviews do not depend on initial reviewer disagreement.
+extra_rows <- do.call(rbind, list(
+  review("13", "A", "Rejected", "old topic", "retained taxa", "Trawl", "LOCATION"),
+  review("14", "A", "Accepted", "old topic", "old taxa", "Trawl"),
+  review("15", "A", "Accepted"),
+  review("16", "A", "Rejected", criterion = "LOCATION"),
+  review("17", "A", "Rejected"), review("17", "B", "Rejected")
+))
+write_xlsx(list(screening = extra_rows), file.path(done, "reviews.xlsx"))
+extra_output <- file.path(root, "additional-output")
+template <- run_screening(input, extra_output)
+manual <- template$final_screening[, c(template$adjudication_columns, "apply_reviewer3")]
+manual$apply_reviewer3 <- c("true", "TRUE", "TRUE", "", "FALSE")
+manual$decision_reviewer_3 <- c("Accepted", "Rejected", NA, "Accepted", "Accepted")
+manual$Topic_reviewer_3[1] <- "new topic"
+manual$TA_exclCriteria_reviewer_3[2] <- "GEAR"
+manual$notes_reviewer_3[1] <- "additional review note"
+write_xlsx(list(final_screening = manual), template$reviewer3_file)
+hash <- tools::md5sum(template$reviewer3_file)
+extra <- run_screening(input, extra_output)
+get_extra <- function(id, field) extra$final_screening[[field]][match(id, extra$final_screening$paperID)]
+stopifnot(
+  setequal(extra$required_adjudication_ids, c("13", "14", "15")),
+  get_extra("13", "final_decision") == "Accepted",
+  get_extra("13", "Topic_final") == "new topic",
+  get_extra("13", "TaxaGroup_final") == "retained taxa",
+  get_extra("13", "fishingGear_final") == "Trawl",
+  is.na(get_extra("13", "TA_exclCriteria_final")),
+  get_extra("13", "notes_reviewer_3") == "additional review note",
+  get_extra("13", "decision_reviewer_1") == "Rejected",
+  get_extra("13", "TA_exclCriteria_reviewer_1") == "LOCATION",
+  get_extra("13", "adjudication_status") == "Resolved",
+  get_extra("13", "adjudication_reason") == "Additional manual review",
+  get_extra("14", "final_decision") == "Rejected",
+  get_extra("14", "TA_exclCriteria_final") == "GEAR",
+  is.na(get_extra("14", "Topic_final")),
+  get_extra("15", "adjudication_status") == "Pending decision",
+  get_extra("15", "pending_fields") == "decision_reviewer_3",
+  get_extra("16", "final_decision") == "Rejected",
+  !get_extra("16", "apply_reviewer3"),
+  get_extra("17", "final_decision") == "Rejected",
+  identical(as.character(tools::md5sum(template$reviewer3_file)), as.character(hash))
+)
+for (file in c(extra$reviewer3_updated_file,
+               file.path(extra$output_dir, "abstract_screening_summary.xlsx"),
+               file.path(extra$output_dir, "abstract_screening_final.xlsx"))) {
+  pending <- read_excel(file, sheet = "adjudication_pending")
+  stopifnot(identical(pending$paperID, "15"),
+            "apply_reviewer3" %in% names(read_excel(file, sheet = "final_screening")))
+}
+again <- run_screening(input, extra_output)
+stopifnot(identical(extra$final_screening, again$final_screening),
+          identical(extra$reviewer3_updated, again$reviewer3_updated))
+file.copy(extra$reviewer3_updated_file, extra$reviewer3_file, overwrite = TRUE)
+adopted <- run_screening(input, extra_output)
+stopifnot(identical(extra$final_screening, adopted$final_screening),
+          identical(extra$reviewer3_updated, adopted$reviewer3_updated))
+
+# A paired unanimous result can also be overridden, but only explicitly.
+manual$apply_reviewer3[manual$paperID == "17"] <- "TRUE"
+write_xlsx(list(final_screening = manual), template$reviewer3_file)
+paired <- run_screening(input, extra_output)
+stopifnot(paired$final_screening$final_decision[paired$final_screening$paperID == "17"] == "Accepted")
+
+# Invalid controls fail clearly; a flag is not silently interpreted as FALSE.
+manual$apply_reviewer3[1] <- "yes"
+write_xlsx(list(final_screening = manual), template$reviewer3_file)
+error <- tryCatch(run_screening(input, extra_output), error = identity)
+stopifnot(inherits(error, "error"), grepl("apply_reviewer3 must contain", conditionMessage(error)))
+
+# Reject output/input collisions before touching the manual workbook.
+collision_script <- append(script,
+  'reviewer3_file <- file.path(output_dir, "abstract_screening_reviewer3_updated.xlsx")',
+  after = grep("^# A manual input must never", script) - 1)
+env <- new.env()
+env$input_data <- input
+env$output_data <- extra_output
+hash <- tools::md5sum(extra$reviewer3_updated_file)
+error <- tryCatch(eval(parse(text = collision_script), envir = env), error = identity)
+stopifnot(inherits(error, "error"), grepl("must be separate", conditionMessage(error)),
+          identical(as.character(tools::md5sum(extra$reviewer3_updated_file)), as.character(hash)))
+cat("Reviewer 3 regression tests passed, including explicit additional reviews.\n")

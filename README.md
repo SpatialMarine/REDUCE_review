@@ -44,6 +44,17 @@ adjudication so reviewer decisions are never overwritten by generated output:
 The reviewer 3 workbook is treated as a manual input and is not overwritten on
 subsequent runs.
 
+For an additional review of an otherwise complete paper, set the optional
+`apply_reviewer3` column to `TRUE` in the manual workbook's `final_screening`
+sheet. This explicitly applies Reviewer 3 even without an initial disagreement.
+Leave it blank or `FALSE` to retain the previous rules; a valid single-reviewer
+paper does not automatically require adjudication. Do not edit the generated
+`requires_adjudication` indicator to activate a review.
+
+See [the detailed Reviewer 3 guide](guides/reviewer3_additional_reviews.md) for
+the input/output workflow, field precedence, tests, and an explanation of every
+changed executable line in the screening script.
+
 After adjudication, `src/06_prepareFullTextScreening.R` reads the generated
 `abstract_screening_final.xlsx`, standardises the final categories, creates one
 bar plot per screening variable, and exports:

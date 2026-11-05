@@ -47,12 +47,26 @@ reviewer3_file <- file.path(
   "abstract_screening/abstract_screening_reviewer3.xlsx"
 )
 
+# A manual input must never share a path with a generated output.
+generated_screening_files <- file.path(output_dir, c(
+  "abstract_screening_reviewer3_updated.xlsx",
+  "abstract_screening_summary.xlsx", "abstract_screening_final.xlsx"
+))
+if (tolower(normalizePath(reviewer3_file, winslash = "/", mustWork = FALSE)) %in%
+    tolower(normalizePath(generated_screening_files, winslash = "/", mustWork = FALSE))) {
+  stop("reviewer3_file must be separate from generated screening output files.")
+}
+
 adjudication_columns <- c(
   "paperID", "reviewer_3", "decision_reviewer_3",
   "TA_exclCriteria_reviewer_3", "notes_reviewer_3",
   "Topic_reviewer_3", "TaxaGroup_reviewer_3",
   "fishingGear_reviewer_3"
 )
+
+# Optional manual opt-in for an additional review, including single-reviewer
+# papers. Existing workbooks without this column keep their previous behaviour.
+reviewer3_control_column <- "apply_reviewer3"
 
 
 # 2. Read and standardise completed files -------------------------------------
@@ -143,12 +157,28 @@ if (file.exists(reviewer3_file)) {
     )
   }
 
+  if (!reviewer3_control_column %in% names(adjudication_decisions)) {
+    adjudication_decisions[[reviewer3_control_column]] <-
+      rep("FALSE", nrow(adjudication_decisions))
+  }
+
   adjudication_decisions <- adjudication_decisions %>%
-    select(all_of(adjudication_columns)) %>%
+    select(all_of(c(adjudication_columns, reviewer3_control_column))) %>%
     mutate(across(everything(), clean_manual_value)) %>%
+    mutate(apply_reviewer3 = str_to_upper(apply_reviewer3))
+
+  invalid_review_controls <- adjudication_decisions %>%
+    filter(!is.na(apply_reviewer3), !apply_reviewer3 %in% c("TRUE", "FALSE"))
+  if (nrow(invalid_review_controls) > 0) {
+    stop("apply_reviewer3 must contain TRUE, FALSE or blank. Invalid Paper ID(s): ",
+         paste(invalid_review_controls$paperID, collapse = ", "))
+  }
+
+  adjudication_decisions <- adjudication_decisions %>%
+    mutate(apply_reviewer3 = coalesce(apply_reviewer3 == "TRUE", FALSE)) %>%
     filter(
-      !is.na(reviewer_3) |
-        if_any(-paperID, ~ !is.na(.x))
+      apply_reviewer3 | if_any(all_of(setdiff(adjudication_columns, "paperID")),
+                              ~ !is.na(.x))
     )
 
   duplicated_adjudication_ids <- adjudication_decisions %>%
@@ -169,7 +199,8 @@ if (file.exists(reviewer3_file)) {
     notes_reviewer_3 = character(),
     Topic_reviewer_3 = character(),
     TaxaGroup_reviewer_3 = character(),
-    fishingGear_reviewer_3 = character()
+    fishingGear_reviewer_3 = character(),
+    apply_reviewer3 = logical()
   )
 }
 
@@ -471,13 +502,22 @@ required_adjudication_ids <- union(
   reviewer_slots$paperID[reviewer_slots$disagreement_any_variable]
 )
 
+# A manual opt-in is separate from the presence of an initial disagreement.
+additional_review_ids <- adjudication_decisions %>%
+  filter(apply_reviewer3) %>%
+  pull(paperID)
+required_adjudication_ids <- union(
+  required_adjudication_ids,
+  intersect(additional_review_ids, paper_summary$paperID)
+)
+
 unknown_adjudication_ids <- setdiff(
   adjudication_decisions$paperID,
   required_adjudication_ids
 )
 
 # Keep historical adjudications even if reviewers subsequently agree.
-# They remain in the Reviewer 3 history, but are not applied to current results.
+# They apply only when currently required or explicitly enabled by the user.
 if (length(unknown_adjudication_ids) > 0) {
   message(
     "Historical adjudications no longer required: ",
@@ -514,17 +554,19 @@ final_screening <- paper_metadata %>%
       select(paperID, n_reviewers, agreement_status),
     by = "paperID"
   ) %>%
+  left_join(adjudication_decisions, by = "paperID") %>%
   mutate(
+    apply_reviewer3 = coalesce(apply_reviewer3, FALSE),
     requires_adjudication = agreement_status %in% c("Disagreement", "Incomplete") |
-      disagreement_any_variable,
+      disagreement_any_variable | apply_reviewer3,
     adjudication_reason = case_when(
       agreement_status == "Incomplete" ~ "Incomplete screening",
       agreement_status == "Disagreement" ~ "Decision disagreement",
       disagreement_any_variable ~ "Variable disagreement",
+      apply_reviewer3 ~ "Additional manual review",
       TRUE ~ NA_character_
     )
   ) %>%
-  left_join(adjudication_decisions, by = "paperID") %>%
   mutate(
     reviewer_3 = if_else(
       requires_adjudication,
@@ -603,7 +645,8 @@ final_screening <- paper_metadata %>%
     proceeds_to_next_phase = final_decision == "Accepted"
   ) %>%
   mutate(
-    pending_decision = agreement_status %in% c("Disagreement", "Incomplete") &
+    pending_decision = (agreement_status %in% c("Disagreement", "Incomplete") |
+      apply_reviewer3) &
       is.na(decision_reviewer_3),
     pending_TA_exclCriteria = disagreement_TA_exclCriteria &
       coalesce(final_decision == "Rejected", FALSE) &
@@ -644,7 +687,8 @@ final_screening <- paper_metadata %>%
     TaxaGroup_reviewer_3, fishingGear_reviewer_3,
     disagreement_TA_exclCriteria, disagreement_Topic,
     disagreement_TaxaGroup, disagreement_fishingGear,
-    disagreement_any_variable, requires_adjudication, adjudication_reason,
+    disagreement_any_variable, apply_reviewer3,
+    requires_adjudication, adjudication_reason,
     adjudication_status, pending_fields, starts_with("pending_"),
     n_reviewers, agreement_status,
     final_decision, TA_exclCriteria_final, Topic_final,
@@ -871,7 +915,8 @@ reviewer3_updated_file <- file.path(
 )
 
 current_adjudications <- final_screening %>%
-  left_join(adjudication_decisions, by = "paperID", suffix = c("", "_historical"))
+  left_join(adjudication_decisions %>% select(-apply_reviewer3),
+            by = "paperID", suffix = c("", "_historical"))
 
 # Use an explicit column loop: no dynamic cur_column() inside pick().
 for (column in setdiff(adjudication_columns, "paperID")) {
