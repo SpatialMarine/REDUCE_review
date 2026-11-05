@@ -370,17 +370,19 @@ reviewer_pairs <- overlap_reviews %>%
   )
 
 pairwise_agreement <- reviewer_pairs %>%
-  group_by(pair, rev1_name_1, rev1_name_2) %>%
-  summarise(
-    n_shared = n(),
+  dplyr::group_by(pair, rev1_name_1, rev1_name_2) %>%
+  dplyr::summarise(
+    n_shared = dplyr::n(),
     n_complete = sum(!is.na(decision_1) & !is.na(decision_2)),
     n_agree = sum(agrees),
-    percent_agreement = if_else(
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    percent_agreement = dplyr::if_else(
       n_complete > 0,
       round(100 * n_agree / n_complete, 1),
       NA_real_
-    ),
-    .groups = "drop"
+    )
   )
 
 disagreement_details <- overlap_reviews %>%
@@ -420,7 +422,8 @@ if (nrow(invalid_adjudication_decisions) > 0) {
 }
 
 reviewer_slots <- reviews %>%
-  transmute(
+  tibble::as_tibble() %>%
+  dplyr::transmute(
     paperID,
     reviewer_name = rev1_name,
     decision,
@@ -430,11 +433,11 @@ reviewer_slots <- reviews %>%
     TaxaGroup,
     fishingGear
   ) %>%
-  group_by(paperID) %>%
-  arrange(reviewer_name, .by_group = TRUE) %>%
-  mutate(reviewer_number = row_number()) %>%
-  ungroup() %>%
-  pivot_wider(
+  dplyr::group_by(paperID) %>%
+  dplyr::arrange(reviewer_name, .by_group = TRUE) %>%
+  dplyr::mutate(reviewer_number = dplyr::row_number()) %>%
+  dplyr::ungroup() %>%
+  tidyr::pivot_wider(
     id_cols = paperID,
     names_from = reviewer_number,
     values_from = c(

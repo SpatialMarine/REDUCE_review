@@ -33,7 +33,7 @@ Las salidas se escriben con writexl: no conservan necesariamente colores o forma
 
 ## Explicación de cada línea modificada del script
 
-Los números corresponden a `src/05_summariseAbstractScreening.R` en este PR. Cada línea añadida o sustituida está documentada a continuación; también se explican comentarios y cierres de bloques. Las líneas eliminadas se sustituyen por estas operaciones: el select incluye ahora el control, el filtro distingue activación y feedback, la unión manual se adelanta y las condiciones de requerimiento/pendiente incluyen la activación explícita.
+Los números corresponden a `src/05_summariseAbstractScreening.R` en esta versión. Cada línea añadida o sustituida está documentada a continuación; también se explican comentarios y cierres de bloques. Las líneas eliminadas se sustituyen por estas operaciones: el select incluye ahora el control, el filtro distingue activación y feedback, la unión manual se adelanta y las condiciones de requerimiento/pendiente incluyen la activación explícita.
 
 | Línea | Código | Explicación |
 |---:|---|---|
@@ -67,25 +67,25 @@ Los números corresponden a `src/05_summariseAbstractScreening.R` en este PR. Ca
 | 181 | `~ !is.na(.x))` | Comprueba únicamente los campos manuales de Reviewer 3; excluye ID y control para no tratar cada FALSE como feedback. |
 | 202 | `fishingGear_reviewer_3 = character(),` | Mantiene el campo de arte vacío y añade la coma necesaria para incorporar el nuevo control al esquema vacío. |
 | 203 | `apply_reviewer3 = logical()` | Define el control como lógico en una tabla vacía; mantiene tipos compatibles cuando todavía no existe el archivo manual. |
-| 505 | `# A manual opt-in is separate from the presence of an initial disagreement.` | Comentario: A manual opt-in is separate from the presence of an initial disagreement. |
-| 506 | `additional_review_ids <- adjudication_decisions %>%` | Inicia la lista de artículos cuya revisión adicional se ha activado explícitamente. |
-| 507 | `filter(apply_reviewer3) %>%` | Selecciona únicamente las activaciones TRUE. |
-| 508 | `pull(paperID)` | Extrae sus IDs como vector; la asociación siempre se realiza por ID y no por posición. |
-| 509 | `required_adjudication_ids <- union(` | Amplía el conjunto de adjudicaciones requeridas sin duplicar IDs. |
-| 510 | `required_adjudication_ids,` | Conserva todos los requerimientos que ya existían por discrepancia o decisión incompleta. |
-| 511 | `intersect(additional_review_ids, paper_summary$paperID)` | Añade solo las activaciones de artículos presentes en el subconjunto actual; los ausentes permanecen en el historial. |
-| 512 | `)` | Cierra el bloque o la llamada y, cuando aparece %>%, continúa la transformación. |
-| 520 | `# They apply only when currently required or explicitly enabled by the user.` | Comentario: They apply only when currently required or explicitly enabled by the user. |
-| 557 | `left_join(adjudication_decisions, by = "paperID") %>%` | Adelanta la unión con los datos manuales: el control debe estar disponible antes de calcular requires_adjudication. |
-| 559 | `apply_reviewer3 = coalesce(apply_reviewer3, FALSE),` | Usa FALSE para artículos sin fila manual; una ausencia nunca activa una revisión. |
-| 561 | `disagreement_any_variable \| apply_reviewer3,` | Añade la activación explícita como motivo suficiente para aplicar Reviewer 3, manteniendo los motivos automáticos anteriores. |
-| 566 | `apply_reviewer3 ~ "Additional manual review",` | Identifica la revisión adicional cuando no hay otro motivo previo; se respeta la prioridad Incomplete, Disagreement y discrepancia de variables. |
-| 648 | `pending_decision = (agreement_status %in% c("Disagreement", "Incomplete") \|` | Amplía la condición que exige una decisión de Reviewer 3 para incluir la revisión adicional. |
-| 649 | `apply_reviewer3) &` | Una activación explícita exige decisión aunque los revisores iniciales estuvieran de acuerdo; el chequeo existente de NA determina si está pendiente. |
-| 690 | `disagreement_any_variable, apply_reviewer3,` | Exporta el control en final_screening para conservarlo entre ejecuciones y permitir auditarlo. |
-| 691 | `requires_adjudication, adjudication_reason,` | Mantiene los indicadores calculados junto al control; la separación visual no cambia su significado. |
-| 918 | `left_join(adjudication_decisions %>% select(-apply_reviewer3),` | Al recuperar el historial, excluye el control de la tabla derecha porque ya está en el resultado actual; evita columnas .x/.y. |
-| 919 | `by = "paperID", suffix = c("", "_historical"))` | Mantiene la recuperación por ID y los sufijos que usa el bucle existente para preservar respuestas históricas. |
+| 508 | `# A manual opt-in is separate from the presence of an initial disagreement.` | Comentario: A manual opt-in is separate from the presence of an initial disagreement. |
+| 509 | `additional_review_ids <- adjudication_decisions %>%` | Inicia la lista de artículos cuya revisión adicional se ha activado explícitamente. |
+| 510 | `filter(apply_reviewer3) %>%` | Selecciona únicamente las activaciones TRUE. |
+| 511 | `pull(paperID)` | Extrae sus IDs como vector; la asociación siempre se realiza por ID y no por posición. |
+| 512 | `required_adjudication_ids <- union(` | Amplía el conjunto de adjudicaciones requeridas sin duplicar IDs. |
+| 513 | `required_adjudication_ids,` | Conserva todos los requerimientos que ya existían por discrepancia o decisión incompleta. |
+| 514 | `intersect(additional_review_ids, paper_summary$paperID)` | Añade solo las activaciones de artículos presentes en el subconjunto actual; los ausentes permanecen en el historial. |
+| 515 | `)` | Cierra el bloque o la llamada y, cuando aparece %>%, continúa la transformación. |
+| 523 | `# They apply only when currently required or explicitly enabled by the user.` | Comentario: They apply only when currently required or explicitly enabled by the user. |
+| 560 | `left_join(adjudication_decisions, by = "paperID") %>%` | Adelanta la unión con los datos manuales: el control debe estar disponible antes de calcular requires_adjudication. |
+| 562 | `apply_reviewer3 = coalesce(apply_reviewer3, FALSE),` | Usa FALSE para artículos sin fila manual; una ausencia nunca activa una revisión. |
+| 564 | `disagreement_any_variable \| apply_reviewer3,` | Añade la activación explícita como motivo suficiente para aplicar Reviewer 3, manteniendo los motivos automáticos anteriores. |
+| 569 | `apply_reviewer3 ~ "Additional manual review",` | Identifica la revisión adicional cuando no hay otro motivo previo; se respeta la prioridad Incomplete, Disagreement y discrepancia de variables. |
+| 651 | `pending_decision = (agreement_status %in% c("Disagreement", "Incomplete") \|` | Amplía la condición que exige una decisión de Reviewer 3 para incluir la revisión adicional. |
+| 652 | `apply_reviewer3) &` | Una activación explícita exige decisión aunque los revisores iniciales estuvieran de acuerdo; el chequeo existente de NA determina si está pendiente. |
+| 693 | `disagreement_any_variable, apply_reviewer3,` | Exporta el control en final_screening para conservarlo entre ejecuciones y permitir auditarlo. |
+| 694 | `requires_adjudication, adjudication_reason,` | Mantiene los indicadores calculados junto al control; la separación visual no cambia su significado. |
+| 921 | `left_join(adjudication_decisions %>% select(-apply_reviewer3),` | Al recuperar el historial, excluye el control de la tabla derecha porque ya está en el resultado actual; evita columnas .x/.y. |
+| 922 | `by = "paperID", suffix = c("", "_historical"))` | Mantiene la recuperación por ID y los sufijos que usa el bucle existente para preservar respuestas históricas. |
 
 ## Pruebas y revisión del diff
 
@@ -106,3 +106,14 @@ Validación realizada con R 4.4.3 y dplyr 1.2.1. También se comprobó `git diff
 Se hizo además una prueba local con una copia temporal derivada del Excel de 2.285 artículos y 2.855 revisiones iniciales: se activaron exactamente los 150 IDs de las dos listas, y las 150 decisiones coincidieron con Reviewer 3 (92 Accepted y 58 Rejected; los 150 Resolved). Esta prueba comprueba la integración de decisiones, no la corrección científica de las clasificaciones ni una ejecución sobre los archivos originales Done. Los hashes del libro original y la entrada temporal no cambiaron.
 
 **Bloqueo previo del archivo real:** paperID 757 contiene NOTOPIC como decision_reviewer_3, que solo admite Accepted/Rejected. Primero se verificó que el script se detiene indicando 757; después se excluyó únicamente esa adjudicación inválida de la copia temporal para comprobar las otras decisiones. No se corrigió ni modificó el original. Debe revisarse manualmente antes de ejecutar el archivo real. En esa copia quedaron cuatro pendientes fuera de los 150 IDs; no se ocultaron ni se resolvieron automáticamente.
+
+
+## Correcciones locales de compatibilidad incorporadas después del PR 14
+
+Se recuperan dos ajustes que estaban en una copia local del script, sin cambiar la lógica de adjudicación:
+
+- `pairwise_agreement`: `dplyr::group_by`, `dplyr::summarise` y `dplyr::n` seleccionan explícitamente las funciones adecuadas, aunque tidytable enmascare esos nombres. El resumen calcula primero n_shared, n_complete y n_agree. Después, `dplyr::mutate` calcula percent_agreement con `dplyr::if_else`; así n_agree ya es una columna del resumen. Un par sin decisiones completas conserva NA como porcentaje.
+- `reviewer_slots`: `tibble::as_tibble()` convierte la entrada antes de ordenar y agrupar. `dplyr::transmute`, `group_by`, `arrange`, `mutate`, `row_number` y `ungroup` mantienen la misma semántica, con independencia de los nombres enmascarados. `tidyr::pivot_wider` construye las columnas de los revisores.
+- Se mantiene la comprobación dplyr >= 1.1.1: comentar ese chequeo no haría compatible el argumento relationship del join con versiones anteriores.
+
+La batería de regresión añade dos comprobaciones con objetos reales de tidytable y funciones de tidytable en el entorno de evaluación. El primer caso verifica recuentos, 50 % de acuerdo y NA cuando no hay decisiones completas; el segundo verifica cinco artículos, la numeración de revisores y la columna vacía del segundo revisor en un artículo individual. Estas comprobaciones requieren tidytable; si no está instalado se indica su omisión, sin omitir las demás pruebas. En la validación local tidytable estaba instalado y ambas comprobaciones pasaron. No se afirma compatibilidad general de todos los bloques del script con cualquier paquete enmascarando funciones.
