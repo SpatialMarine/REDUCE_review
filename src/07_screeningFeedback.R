@@ -194,8 +194,9 @@ figure2_totals <- screening %>%
   dplyr::count(reviewer_group, name = "n_total") %>%
   tidyr::complete(reviewer_group = figure2_groups, fill = list(n_total = 0L))
 figure2_papers <- field_details %>%
-  dplyr::filter(changed_value) %>%
+  dplyr::filter(changed_value | (missing_initial & completed_value)) %>%
   dplyr::left_join(screening %>% dplyr::select(paperID, n_reviewers), by = "paperID") %>%
+  dplyr::filter(changed_value | n_reviewers == 1L) %>%
   dplyr::mutate(
     reviewer_group = dplyr::if_else(n_reviewers == 2L, figure2_groups[1], figure2_groups[2]),
     change_type = dplyr::case_when(
@@ -203,11 +204,14 @@ figure2_papers <- field_details %>%
       field == "TA_exclCriteria" ~ figure2_types[2],
       TRUE ~ figure2_types[3]
     )
-  ) %>% dplyr::distinct(paperID, reviewer_group, change_type)
+  ) %>%
+  dplyr::group_by(paperID, reviewer_group, change_type) %>%
+  dplyr::summarise(changed = any(changed_value), .groups = "drop")
 figure2_summary <- figure2_papers %>%
-  dplyr::count(reviewer_group, change_type, name = "n_papers") %>%
+  dplyr::group_by(reviewer_group, change_type) %>%
+  dplyr::summarise(n_papers = sum(changed), n_filled = sum(!changed), .groups = "drop") %>%
   tidyr::complete(reviewer_group = figure2_groups, change_type = figure2_types,
-                  fill = list(n_papers = 0L)) %>%
+                  fill = list(n_papers = 0L, n_filled = 0L)) %>%
   dplyr::left_join(figure2_totals, by = "reviewer_group") %>%
   dplyr::mutate(reviewer_group = factor(reviewer_group, levels = figure2_groups),
                 panel = factor(reviewer_group, levels = figure2_groups, labels = figure2_labels),
@@ -252,17 +256,22 @@ p_outcome <- ggplot(overview_data, aes(x = outcome, y = n_papers, fill = outcome
   theme(legend.position = "none")
 save_figure(p_outcome, "figure_1_unique_paper_outcomes")
 
-p_routes <- ggplot(figure2_summary,
-                  aes(x = change_type, y = n_papers, fill = reviewer_group)) +
-  geom_col(width = 0.65) + coord_flip() + facet_wrap(~panel, ncol = 1) +
-  geom_text(aes(label = n_papers), hjust = -0.2, fontface = "bold") +
+figure2_bars <- figure2_summary %>%
+  tidyr::pivot_longer(c(n_papers, n_filled), names_to = "segment", values_to = "count") %>%
+  dplyr::mutate(segment = factor(segment, levels = c("n_papers", "n_filled")))
+p_routes <- ggplot(figure2_bars, aes(x = change_type, y = count, fill = segment)) +
+  geom_col(width = 0.65, position = position_stack(reverse = TRUE)) +
+  coord_flip() + facet_wrap(~panel, ncol = 1) +
+  geom_text(data = figure2_summary,
+            aes(x = change_type, y = n_papers + n_filled, label = n_papers + n_filled),
+            inherit.aes = FALSE, hjust = -0.2, fontface = "bold") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
-  scale_fill_manual(values = c("Two initial reviewers" = "#486F91",
-                               "One initial reviewer" = "#C48A32")) +
+  scale_fill_manual(values = c(n_papers = "#486F91", n_filled = "#C48A32"),
+                    labels = c("Existing value changed", "Missing value filled")) +
   labs(title = "Changes made by Reviewer 3",
-       subtitle = "Existing values changed; blank-field completions are reported separately",
-       caption = "N includes every paper in the group. Bars count changed papers; change types can overlap.",
-       x = NULL, y = "Unique papers") + plot_theme + theme(legend.position = "none")
+       subtitle = "Filled gaps are included for papers with one initial reviewer",
+       caption = "Each paper counts once per bar. Papers with both actions count as changed.",
+       fill = NULL, x = NULL, y = "Unique papers") + plot_theme
 save_figure(p_routes, "figure_2a_reviewer3_review_routes", height = 8)
 
 p_reviewers <- ggplot(reviewer_summary,
