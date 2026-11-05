@@ -315,21 +315,23 @@ gap_totals <- field_details %>%
     no_longer_applicable = sum(missing_initial & !final_applicable),
     pending = sum(missing_initial & final_applicable & is_blank(final_value)),
     .groups = "drop"
-  )
+  ) %>%
+  dplyr::mutate(solved = filled + no_longer_applicable, blank = pending)
 gap_bars <- gap_totals %>%
-  tidyr::pivot_longer(c(filled, no_longer_applicable, pending), names_to = "status", values_to = "count") %>%
+  tidyr::pivot_longer(c(solved, blank), names_to = "status", values_to = "count") %>%
+  dplyr::mutate(status = factor(status, levels = c("solved", "blank"))) %>%
   dplyr::mutate(field = factor(field, levels = rev(coding_fields)))
 p_gap_totals <- ggplot(gap_bars, aes(field, count, fill = status)) +
-  geom_col(position = position_stack(reverse = TRUE), width = 0.65) +
+  geom_col(position = position_stack(reverse = TRUE), width = 0.65,
+           colour = "#767676", linewidth = 0.25) +
   geom_text(aes(label = ifelse(count > 0, count, "")),
             position = position_stack(vjust = 0.5, reverse = TRUE), size = 3.5) +
   coord_flip() +
   scale_x_discrete(labels = c(decision = "Accepted / Rejected",
     TA_exclCriteria = "Rejection criterion", Topic = "Topic",
     TaxaGroup = "Taxa group", fishingGear = "Fishing gear")) +
-  scale_fill_manual(values = c(filled = "#C48A32", no_longer_applicable = "#D9E2EA", pending = "#B63D37"),
-                    labels = c(filled = "Filled in final result",
-                               no_longer_applicable = "No longer applicable", pending = "Blank in final result")) +
+  scale_fill_manual(values = c(solved = "#C48A32", blank = "#FFFFFF"),
+                    labels = c(solved = "Solved", blank = "Blank")) +
   labs(title = "Missing fields across all initial reviews",
        subtitle = paste(sum(gap_totals$initial), "initial gaps across both reviewer groups"),
        x = NULL, y = "Fields", fill = NULL) + plot_theme
