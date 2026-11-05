@@ -9,6 +9,7 @@ make_paper <- function(id) {
   d <- data.frame(paperID = as.character(id), title = paste("Paper", id),
     abstract = "Synthetic abstract", keywords = "test", authors = "Test", year = "2026",
     doi = paste0("test/", id), reviewer_1 = "A", reviewer_2 = NA_character_,
+    n_reviewers = 1L,
     reviewer_3 = "DRG", agreement_status = "Accepted", disagreement_any_variable = FALSE,
     requires_adjudication = FALSE, apply_reviewer3 = FALSE,
     adjudication_status = "No longer required", final_decision = "Accepted")
@@ -30,6 +31,7 @@ d$reviewer_1[c(6,9)] <- "C"
 d$decision_reviewer_1[6] <- NA
 d$agreement_status[c(1,6)] <- c("Disagreement", "Incomplete")
 d$reviewer_2[1] <- "B"
+d$n_reviewers[1] <- 2L
 d$decision_reviewer_2[1] <- "Rejected"
 d$TA_exclCriteria_reviewer_2[1] <- "LOCATION"
 d$requires_adjudication[c(1,2,3,6,7,9)] <- TRUE
@@ -50,6 +52,10 @@ run_report <- function() {
   eval(parse("src/07_screeningFeedback.R"), envir = env); env
 }
 e <- run_report()
+figure2_count <- function(group, type) {
+  e$figure2_summary$n_papers[e$figure2_summary$reviewer_group == group &
+                              e$figure2_summary$change_type == type]
+}
 stopifnot(sum(e$outcome_summary$n_papers) == 9,
   e$outcome_summary$n_papers[e$outcome_summary$outcome == "Accepted"] == 6,
   e$outcome_summary$n_papers[e$outcome_summary$outcome == "Rejected"] == 2,
@@ -58,6 +64,12 @@ stopifnot(sum(e$outcome_summary$n_papers) == 9,
   sum(e$paper_interventions$changed) == 2,
   sum(e$paper_interventions$completed) == 4,
   e$intervention_totals$n_intervened == 4,
+  nrow(e$figure2_summary) == 6,
+  figure2_count("Two initial reviewers", "Accepted / Rejected") == 1,
+  figure2_count("One initial reviewer", "Accepted / Rejected") == 1,
+  all(e$figure2_summary$n_total[e$figure2_summary$reviewer_group == "Two initial reviewers"] == 1),
+  all(e$figure2_summary$n_total[e$figure2_summary$reviewer_group == "One initial reviewer"] == 8),
+  sum(e$figure2_summary$n_papers) == 2,
   sum(e$field_details$missing_initial) == 5,
   e$reviewer_summary$n_changed[e$reviewer_summary$reviewer == "A"] == 2,
   e$reviewer_summary$n_with_active_reviewer3[e$reviewer_summary$reviewer == "A"] == 4,
@@ -84,6 +96,40 @@ clean <- d[4, ]; clean$paperID <- "clean"
 openxlsx::write.xlsx(list(final_screening = clean), input, overwrite = TRUE)
 empty <- run_report()
 stopifnot(nrow(empty$route_summary) == 0, nrow(empty$feedback_rows) == 0,
+          nrow(empty$figure2_summary) == 6, sum(empty$figure2_summary$n_papers) == 0,
           file.exists(file.path(empty$feedback_dir, "feedback_B.xlsx")))
+
+# Group by the initial reviewer count, even if those reviewers agreed.
+# Multiple category edits and two initial reviewers must not duplicate a bar.
+special <- d[1, ]
+special$paperID <- "multi"
+special$apply_reviewer3 <- TRUE
+special$agreement_status <- "Accepted"
+special$final_decision <- "Accepted"
+special$decision_reviewer_2 <- "Accepted"
+special$decision_reviewer_3 <- "Accepted"
+special$Topic_reviewer_2 <- special$Topic_reviewer_1
+special$Topic_reviewer_3 <- "Ghost gear"
+special$fishingGear_reviewer_2 <- special$fishingGear_reviewer_1
+special$fishingGear_reviewer_3 <- "Longline"
+special$Topic_final <- "Ghost gear"
+criterion_case <- special
+criterion_case$paperID <- "criterion"
+criterion_case$final_decision <- "Rejected"
+criterion_case$decision_reviewer_1 <- "Rejected"
+criterion_case$decision_reviewer_2 <- "Rejected"
+criterion_case$decision_reviewer_3 <- "Rejected"
+criterion_case$TA_exclCriteria_reviewer_1 <- "NOTOPIC"
+criterion_case$TA_exclCriteria_reviewer_2 <- "LOCATION"
+criterion_case$TA_exclCriteria_reviewer_3 <- "GEAR"
+openxlsx::write.xlsx(list(final_screening = rbind(special, criterion_case)), input, overwrite = TRUE)
+multi <- run_report()
+stopifnot(nrow(multi$figure2_papers) == 2,
+  all(multi$figure2_papers$reviewer_group == "Two initial reviewers"),
+  multi$figure2_papers$change_type[multi$figure2_papers$paperID == "multi"] ==
+    "Categories (Topic, taxa, gear)",
+  multi$figure2_papers$change_type[multi$figure2_papers$paperID == "criterion"] ==
+    "Rejection criterion",
+  sum(multi$figure2_summary$n_papers) == 2)
 dev.off()
 cat("Screening feedback regression tests passed.\n")

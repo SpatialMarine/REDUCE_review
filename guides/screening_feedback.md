@@ -7,7 +7,7 @@ Ejecutar `source("src/07_screeningFeedback.R")` después del script 05, con `out
 Dentro de `output_data/abstract_screening/feedback_screening/`:
 
 - `figures/figure_1_unique_paper_outcomes.png` y `.pdf`: total de IDs únicos y resultados Accepted/Rejected, con pendientes si los hay. Accepted significa pasar a texto completo; no elegibilidad definitiva.
-- `figures/figure_2a_reviewer3_review_routes.png` y `.pdf`: artículos únicos con cambios de valores y artículos con vacíos completados, en paneles separados, según la ruta de revisión.
+- `figures/figure_2a_reviewer3_review_routes.png` y `.pdf`: arriba, el grupo completo de artículos con dos revisores iniciales; abajo, el grupo completo con uno. El encabezado indica el total N de cada grupo, aunque no todos sus artículos hayan tenido discrepancias o cambios. Cada panel muestra tres barras: Accepted/Rejected, criterio de rechazo y categorías (Topic/TaxaGroup/fishingGear). Solo cuentan valores existentes cambiados; los vacíos completados siguen registrados aparte en el resumen.
 - `figures/figure_2b_reviewer3_changes_by_reviewer.png` y `.pdf`: artículos con al menos un valor existente cambiado, por revisor inicial; etiquetas con numerador, carga total y porcentaje. Incluye decisión, criterio y categorías aplicables. No se limita a Accepted/Rejected.
 - `figures/figure_3_missing_fields_by_reviewer.png` y `.pdf`: mapa de campos faltantes en las evaluaciones iniciales. Las celdas muestran faltantes/aplicables y el color muestra el porcentaje. n/a significa que no hay evaluaciones aplicables.
 - `feedback_<reviewer>.xlsx`: un libro por cada revisor nombrado en la entrada, incluso si no hay casos que corregir.
@@ -27,13 +27,15 @@ Se compara cada evaluación inicial con los valores explícitos de Reviewer 3:
 
 La comparación ignora mayúsculas, espacios y orden de selecciones separadas por `/`, `;` o `,`. No fusiona automáticamente sinónimos semánticos. Solo se comparan categorías aplicables al resultado final: criterio para Rejected; Topic y fishingGear para Accepted; TaxaGroup para Accepted de Megafauna catch. La decisión siempre es comparable. No se cuentan como cambios explícitos los vaciados mecánicos de campos finales que efectúa el script 05 tras un rechazo.
 
-Un artículo puede tener un cambio de decisión y un campo vacío completado: aparece en ambos paneles de 2a. Por eso **no deben sumarse los dos paneles**. A nivel de artículo se usa un ID una sola vez por panel. A nivel de revisor se compara su propia evaluación; un artículo compartido puede contribuir al feedback de dos personas. **Sumar los recuentos de todos los revisores no equivale al número de artículos únicos.**
+En la figura 2a, cada artículo pertenece a un único panel según `n_reviewers`: dos revisores (subconjunto de control) frente a uno. No se clasifica según agreement_status ni apply_reviewer3: los artículos con dos revisores que coincidían también pertenecen al panel superior. N cuenta todos los artículos de ese grupo, no solo los que Reviewer 3 modificó. Rellenar una decisión vacía no cuenta como cambio de una decisión existente. Cada barra cuenta IDs distintos: cambiar dos categorías o corregir a ambos revisores no duplica el artículo dentro de esa barra. Un artículo sí puede contribuir a varias barras (por ejemplo, decisión y criterio); **sumar las barras no da necesariamente artículos distintos**. `Figure2_changes` contiene los seis recuentos y sus denominadores n_total; `Figure2_papers` contiene los IDs que los forman. Los totales de cambios y completados mantienen su posible solapamiento en `Intervention_totals`.
+
+A nivel de revisor se compara su propia evaluación; un artículo compartido puede contribuir al feedback de dos personas. **Sumar los recuentos de todos los revisores no equivale al número de artículos únicos.**
 
 `Reviewer_summary` incluye n_reviewed, n_with_active_reviewer3, n_changed, n_completed, n_intervened, n_missing y los cambios/completados de decisión por separado. Se ofrecen porcentajes sobre toda la carga y sobre el subconjunto con Reviewer 3 activo. `Decision_changes` cuenta evaluaciones iniciales por transición; no artículos únicos.
 
-## Qué significan las rutas
+## Rutas conservadas para auditoría
 
-Se reconstruyen con los indicadores de la entrada:
+Estas rutas siguen disponibles en las tablas y el feedback individual, pero ya no se usan como categorías de la figura 2a. Se reconstruyen con los indicadores de la entrada:
 
 | Ruta | Regla |
 |---|---|
@@ -79,6 +81,6 @@ Para el feedback de la reunión, conviene acompañar las cifras con dos o tres e
 
 ## Comprobaciones
 
-`Rscript tests/test_screening_feedback.R` verifica resultados únicos frente a evaluaciones compartidas, prioridad del historial activo/inactivo, separación entre cambios y completados, campos no aplicables, decisión faltante, comparación de selecciones reordenadas, denominadores, exports por revisor, figuras PNG/PDF, conservación del hash de entrada, reejecución y ausencia total de intervenciones.
+`Rscript tests/test_screening_feedback.R` verifica resultados únicos frente a evaluaciones compartidas, prioridad del historial activo/inactivo, separación entre cambios y completados, campos no aplicables, decisión faltante, comparación de selecciones reordenadas, denominadores, exports por revisor, figuras PNG/PDF, conservación del hash de entrada, reejecución y ausencia total de intervenciones. Para la figura 2a comprueba las seis barras, los denominadores sobre todos los artículos de cada grupo, la exclusión de vacíos completados, los ceros y que dos cambios de categorías o dos revisores corregidos cuentan un solo ID por barra. También comprueba que dos revisores que coincidían siguen perteneciendo al panel superior.
 
 El script no envía los Excel a los revisores. Genera los archivos localmente para que el equipo los examine y decida cómo compartirlos.

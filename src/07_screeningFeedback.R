@@ -25,7 +25,7 @@ screening <- readxl::read_excel(screening_file, sheet = "final_screening",
 coding_fields <- c("decision", "TA_exclCriteria", "Topic", "TaxaGroup", "fishingGear")
 required_columns <- c(
   "paperID", "title", "abstract", "keywords", "reviewer_1", "reviewer_2",
-  "agreement_status", "disagreement_any_variable", "requires_adjudication",
+  "agreement_status", "disagreement_any_variable", "requires_adjudication", "n_reviewers",
   "apply_reviewer3", "adjudication_status", "final_decision",
   "TA_exclCriteria_final", "Topic_final", "TaxaGroup_final", "fishingGear_final",
   unlist(lapply(1:3, function(i) paste0(c(coding_fields, "notes"), "_reviewer_", i)))
@@ -38,6 +38,10 @@ if (length(missing_columns) > 0) {
 screening$paperID <- stringr::str_squish(screening$paperID)
 if (any(is.na(screening$paperID) | screening$paperID == "") || anyDuplicated(screening$paperID)) {
   stop("final_screening must contain one non-missing row per paperID.")
+}
+screening$n_reviewers <- as.integer(screening$n_reviewers)
+if (anyNA(screening$n_reviewers) || any(!screening$n_reviewers %in% c(1L, 2L))) {
+  stop("Each paper must have one or two initial reviewers.")
 }
 
 is_blank <- function(x) is.na(x) | stringr::str_squish(x) == ""
@@ -178,6 +182,36 @@ if (nrow(route_summary) > 0) {
 decision_changes <- field_details %>%
   dplyr::filter(field == "decision", changed_value | completed_value) %>%
   dplyr::count(review_route, initial_value, reviewer3_value, name = "n_initial_evaluations")
+
+# Figure 2a: the full two-reviewer control subset versus single-reviewer papers.
+figure2_groups <- c("Two initial reviewers", "One initial reviewer")
+figure2_labels <- paste0(figure2_groups, " (N = ",
+  c(sum(screening$n_reviewers == 2L), sum(screening$n_reviewers == 1L)), " papers)")
+figure2_types <- c("Accepted / Rejected", "Rejection criterion", "Categories (Topic, taxa, gear)")
+figure2_totals <- screening %>%
+  dplyr::mutate(reviewer_group = dplyr::if_else(n_reviewers == 2L,
+                                               figure2_groups[1], figure2_groups[2])) %>%
+  dplyr::count(reviewer_group, name = "n_total") %>%
+  tidyr::complete(reviewer_group = figure2_groups, fill = list(n_total = 0L))
+figure2_papers <- field_details %>%
+  dplyr::filter(changed_value) %>%
+  dplyr::left_join(screening %>% dplyr::select(paperID, n_reviewers), by = "paperID") %>%
+  dplyr::mutate(
+    reviewer_group = dplyr::if_else(n_reviewers == 2L, figure2_groups[1], figure2_groups[2]),
+    change_type = dplyr::case_when(
+      field == "decision" ~ figure2_types[1],
+      field == "TA_exclCriteria" ~ figure2_types[2],
+      TRUE ~ figure2_types[3]
+    )
+  ) %>% dplyr::distinct(paperID, reviewer_group, change_type)
+figure2_summary <- figure2_papers %>%
+  dplyr::count(reviewer_group, change_type, name = "n_papers") %>%
+  tidyr::complete(reviewer_group = figure2_groups, change_type = figure2_types,
+                  fill = list(n_papers = 0L)) %>%
+  dplyr::left_join(figure2_totals, by = "reviewer_group") %>%
+  dplyr::mutate(reviewer_group = factor(reviewer_group, levels = figure2_groups),
+                panel = factor(reviewer_group, levels = figure2_groups, labels = figure2_labels),
+                change_type = factor(change_type, levels = rev(figure2_types)))
 outcome_summary <- screening %>%
   dplyr::mutate(outcome = dplyr::case_when(
     final_decision == "Accepted" ~ "Accepted",
@@ -218,20 +252,17 @@ p_outcome <- ggplot(overview_data, aes(x = outcome, y = n_papers, fill = outcome
   theme(legend.position = "none")
 save_figure(p_outcome, "figure_1_unique_paper_outcomes")
 
-p_routes <- ggplot(route_summary, aes(x = review_route, y = n_papers, fill = intervention)) +
-  geom_col(width = 0.65) + coord_flip() + facet_wrap(~intervention, ncol = 1) +
+p_routes <- ggplot(figure2_summary,
+                  aes(x = change_type, y = n_papers, fill = reviewer_group)) +
+  geom_col(width = 0.65) + coord_flip() + facet_wrap(~panel, ncol = 1) +
   geom_text(aes(label = n_papers), hjust = -0.2, fontface = "bold") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
-  scale_fill_manual(values = c("Changed an existing value" = "#486F91",
-                               "Completed a blank value" = "#C48A32")) +
-  labs(title = "Reviewer 3 interventions by review route",
-       subtitle = "Unique papers within each panel; one paper can appear in both panels",
+  scale_fill_manual(values = c("Two initial reviewers" = "#486F91",
+                               "One initial reviewer" = "#C48A32")) +
+  labs(title = "Changes made by Reviewer 3",
+       subtitle = "Existing values changed; blank-field completions are reported separately",
+       caption = "N includes every paper in the group. Bars count changed papers; change types can overlap.",
        x = NULL, y = "Unique papers") + plot_theme + theme(legend.position = "none")
-if (nrow(route_summary) == 0) {
-  p_routes <- ggplot() + annotate("text", x = 0, y = 0,
-                                 label = "No active Reviewer 3 changes or completions") +
-    theme_void() + labs(title = "Reviewer 3 interventions")
-}
 save_figure(p_routes, "figure_2a_reviewer3_review_routes", height = 8)
 
 p_reviewers <- ggplot(reviewer_summary,
@@ -326,6 +357,7 @@ openxlsx::write.xlsx(list(
   Source = data.frame(input_file = normalizePath(screening_file, winslash = "/"),
                       input_md5 = input_hash),
   Unique_outcomes = outcome_summary, Review_routes = route_summary,
+  Figure2_changes = figure2_summary, Figure2_papers = figure2_papers,
   Intervention_totals = intervention_totals,
   Decision_changes = decision_changes,
   Reviewer_summary = reviewer_summary, Missing_fields = missing_summary,
