@@ -87,8 +87,8 @@ stopifnot(sum(e$outcome_summary$n_papers) == 9,
 files <- list.files(e$feedback_dir, pattern = "^feedback_.*xlsx$", full.names = TRUE)
 stopifnot(length(files) == 3,
   all(c("Summary", "Papers", "Field_details", "Missing_summary") %in% readxl::excel_sheets(files[1])),
-  length(list.files(e$figure_dir, pattern = "png$")) == 4,
-  length(list.files(e$figure_dir, pattern = "pdf$")) == 4)
+  length(list.files(e$figure_dir, pattern = "png$")) == 5,
+  length(list.files(e$figure_dir, pattern = "pdf$")) == 5)
 again <- run_report()
 stopifnot(identical(e$field_details, again$field_details),
           identical(e$reviewer_summary, again$reviewer_summary))
