@@ -70,6 +70,8 @@ stopifnot(sum(e$outcome_summary$n_papers) == 9,
   all(e$figure2_summary$n_total[e$figure2_summary$reviewer_group == "Two initial reviewers"] == 1),
   all(e$figure2_summary$n_total[e$figure2_summary$reviewer_group == "One initial reviewer"] == 8),
   sum(e$figure2_summary$n_papers) == 2,
+  sum(e$figure2_summary$n_filled[e$figure2_summary$reviewer_group == "Two initial reviewers"]) == 0,
+  sum(e$figure2_summary$n_filled[e$figure2_summary$reviewer_group == "One initial reviewer"]) == 2,
   sum(e$field_details$missing_initial) == 5,
   e$reviewer_summary$n_changed[e$reviewer_summary$reviewer == "A"] == 2,
   e$reviewer_summary$n_with_active_reviewer3[e$reviewer_summary$reviewer == "A"] == 4,
@@ -85,8 +87,8 @@ stopifnot(sum(e$outcome_summary$n_papers) == 9,
 files <- list.files(e$feedback_dir, pattern = "^feedback_.*xlsx$", full.names = TRUE)
 stopifnot(length(files) == 3,
   all(c("Summary", "Papers", "Field_details", "Missing_summary") %in% readxl::excel_sheets(files[1])),
-  length(list.files(e$figure_dir, pattern = "png$")) == 4,
-  length(list.files(e$figure_dir, pattern = "pdf$")) == 4)
+  length(list.files(e$figure_dir, pattern = "png$")) == 5,
+  length(list.files(e$figure_dir, pattern = "pdf$")) == 5)
 again <- run_report()
 stopifnot(identical(e$field_details, again$field_details),
           identical(e$reviewer_summary, again$reviewer_summary))
