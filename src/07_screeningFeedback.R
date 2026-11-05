@@ -113,10 +113,13 @@ field_details <- dplyr::bind_rows(lapply(coding_fields, function(field) {
   different <- !is_blank(original) &
     normalise_selection(original) != normalise_selection(adjudicated)
   expected <- reviewer_rows[[paste0("expected_", field)]]
+  final_value <- reviewer_rows[[if (field == "decision") "final_decision" else paste0(field, "_final")]]
   tibble::tibble(
     paperID = reviewer_rows$paperID, reviewer = reviewer_rows$reviewer,
     review_route = reviewer_rows$review_route, field = field,
     initial_value = original, reviewer3_value = adjudicated,
+    final_value = final_value,
+    final_applicable = applicable,
     expected = expected,
     missing_initial = expected & is_blank(original),
     changed_value = supplied & dplyr::coalesce(different, FALSE),
@@ -308,27 +311,37 @@ gap_totals <- field_details %>%
   dplyr::group_by(field) %>%
   dplyr::summarise(
     initial = sum(missing_initial),
-    filled = sum(missing_initial & completed_value),
-    pending = initial - filled,
+    filled = sum(missing_initial & final_applicable & !is_blank(final_value)),
+    no_longer_applicable = sum(missing_initial & !final_applicable),
+    pending = sum(missing_initial & final_applicable & is_blank(final_value)),
     .groups = "drop"
-  )
+  ) %>%
+  dplyr::mutate(solved = filled + no_longer_applicable, blank = pending)
 gap_bars <- gap_totals %>%
-  tidyr::pivot_longer(c(filled, pending), names_to = "status", values_to = "count") %>%
+  tidyr::pivot_longer(c(solved, blank), names_to = "status", values_to = "count") %>%
+  dplyr::mutate(status = factor(status, levels = c("solved", "blank"))) %>%
   dplyr::mutate(field = factor(field, levels = rev(coding_fields)))
 p_gap_totals <- ggplot(gap_bars, aes(field, count, fill = status)) +
-  geom_col(position = position_stack(reverse = TRUE), width = 0.65) +
+  geom_col(position = position_stack(reverse = TRUE), width = 0.65,
+           colour = "#767676", linewidth = 0.25) +
   geom_text(aes(label = ifelse(count > 0, count, "")),
             position = position_stack(vjust = 0.5, reverse = TRUE), size = 3.5) +
   coord_flip() +
   scale_x_discrete(labels = c(decision = "Accepted / Rejected",
     TA_exclCriteria = "Rejection criterion", Topic = "Topic",
     TaxaGroup = "Taxa group", fishingGear = "Fishing gear")) +
-  scale_fill_manual(values = c(filled = "#C48A32", pending = "#D9E2EA"),
-                    labels = c(filled = "Filled by Reviewer 3", pending = "Still blank")) +
+  scale_fill_manual(values = c(solved = "#C48A32", blank = "#FFFFFF"),
+                    labels = c(solved = "Solved", blank = "Blank")) +
   labs(title = "Missing fields across all initial reviews",
        subtitle = paste(sum(gap_totals$initial), "initial gaps across both reviewer groups"),
        x = NULL, y = "Fields", fill = NULL) + plot_theme
 save_figure(p_gap_totals, "figure_3b_missing_fields_total")
+
+final_missing <- field_details %>%
+  dplyr::distinct(paperID, field, final_applicable, final_value) %>%
+  dplyr::group_by(field) %>%
+  dplyr::summarise(applicable = sum(final_applicable),
+                   missing = sum(final_applicable & is_blank(final_value)), .groups = "drop")
 
 # 4. Compact reviewer workbooks, with explicit field-level comparisons ---------
 
@@ -394,6 +407,7 @@ openxlsx::write.xlsx(list(
   Unique_outcomes = outcome_summary, Review_routes = route_summary,
   Figure2_changes = figure2_summary, Figure2_papers = figure2_papers,
   Gap_totals = gap_totals,
+  Final_missing = final_missing,
   Intervention_totals = intervention_totals,
   Decision_changes = decision_changes,
   Reviewer_summary = reviewer_summary, Missing_fields = missing_summary,
