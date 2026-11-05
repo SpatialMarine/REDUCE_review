@@ -88,6 +88,15 @@ values:
 All generated plots are explicitly printed when the script is sourced in
 RStudio as well as being saved to disk.
 
+### Meeting figures and reviewer feedback
+
+After script 05, run `src/07_screeningFeedback.R` with the project setup loaded.
+It reads the final abstract-screening workbook and generates meeting figures,
+one feedback workbook per initial reviewer, and a summary workbook under
+`output/abstract_screening/feedback_screening/`. It does not modify screening
+inputs or send feedback to reviewers. See the [feedback guide](guides/screening_feedback.md)
+for counting rules, denominators, missing-field applicability and limitations.
+
 ### Data availability
 
 See Data availability statement in the published article
