@@ -50,6 +50,10 @@ run_report <- function() {
   eval(parse("src/07_screeningFeedback.R"), envir = env); env
 }
 e <- run_report()
+figure2_count <- function(group, type) {
+  e$figure2_summary$n_papers[e$figure2_summary$disagreement_group == group &
+                              e$figure2_summary$change_type == type]
+}
 stopifnot(sum(e$outcome_summary$n_papers) == 9,
   e$outcome_summary$n_papers[e$outcome_summary$outcome == "Accepted"] == 6,
   e$outcome_summary$n_papers[e$outcome_summary$outcome == "Rejected"] == 2,
@@ -58,6 +62,10 @@ stopifnot(sum(e$outcome_summary$n_papers) == 9,
   sum(e$paper_interventions$changed) == 2,
   sum(e$paper_interventions$completed) == 4,
   e$intervention_totals$n_intervened == 4,
+  nrow(e$figure2_summary) == 6,
+  figure2_count("With initial disagreement", "Accepted / Rejected") == 1,
+  figure2_count("Without initial disagreement", "Accepted / Rejected") == 1,
+  sum(e$figure2_summary$n_papers) == 2,
   sum(e$field_details$missing_initial) == 5,
   e$reviewer_summary$n_changed[e$reviewer_summary$reviewer == "A"] == 2,
   e$reviewer_summary$n_with_active_reviewer3[e$reviewer_summary$reviewer == "A"] == 4,
@@ -84,6 +92,39 @@ clean <- d[4, ]; clean$paperID <- "clean"
 openxlsx::write.xlsx(list(final_screening = clean), input, overwrite = TRUE)
 empty <- run_report()
 stopifnot(nrow(empty$route_summary) == 0, nrow(empty$feedback_rows) == 0,
+          nrow(empty$figure2_summary) == 6, sum(empty$figure2_summary$n_papers) == 0,
           file.exists(file.path(empty$feedback_dir, "feedback_B.xlsx")))
+
+# Group by the original disagreement even when explicit review is also TRUE.
+# Multiple category edits and two initial reviewers must not duplicate a bar.
+special <- d[1, ]
+special$paperID <- "multi"
+special$apply_reviewer3 <- TRUE
+special$final_decision <- "Accepted"
+special$decision_reviewer_2 <- "Accepted"
+special$decision_reviewer_3 <- "Accepted"
+special$Topic_reviewer_2 <- special$Topic_reviewer_1
+special$Topic_reviewer_3 <- "Ghost gear"
+special$fishingGear_reviewer_2 <- special$fishingGear_reviewer_1
+special$fishingGear_reviewer_3 <- "Longline"
+special$Topic_final <- "Ghost gear"
+criterion_case <- special
+criterion_case$paperID <- "criterion"
+criterion_case$final_decision <- "Rejected"
+criterion_case$decision_reviewer_1 <- "Rejected"
+criterion_case$decision_reviewer_2 <- "Rejected"
+criterion_case$decision_reviewer_3 <- "Rejected"
+criterion_case$TA_exclCriteria_reviewer_1 <- "NOTOPIC"
+criterion_case$TA_exclCriteria_reviewer_2 <- "LOCATION"
+criterion_case$TA_exclCriteria_reviewer_3 <- "GEAR"
+openxlsx::write.xlsx(list(final_screening = rbind(special, criterion_case)), input, overwrite = TRUE)
+multi <- run_report()
+stopifnot(nrow(multi$figure2_papers) == 2,
+  all(multi$figure2_papers$disagreement_group == "With initial disagreement"),
+  multi$figure2_papers$change_type[multi$figure2_papers$paperID == "multi"] ==
+    "Categories (Topic, taxa, gear)",
+  multi$figure2_papers$change_type[multi$figure2_papers$paperID == "criterion"] ==
+    "Rejection criterion",
+  sum(multi$figure2_summary$n_papers) == 2)
 dev.off()
 cat("Screening feedback regression tests passed.\n")

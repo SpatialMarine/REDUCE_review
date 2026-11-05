@@ -178,6 +178,29 @@ if (nrow(route_summary) > 0) {
 decision_changes <- field_details %>%
   dplyr::filter(field == "decision", changed_value | completed_value) %>%
   dplyr::count(review_route, initial_value, reviewer3_value, name = "n_initial_evaluations")
+
+# Figure 2a: two disjoint groups and three change types, counted by unique ID.
+# Explicit activations never move a paper out of its original disagreement group.
+figure2_groups <- c("With initial disagreement", "Without initial disagreement")
+figure2_types <- c("Accepted / Rejected", "Rejection criterion", "Categories (Topic, taxa, gear)")
+figure2_papers <- field_details %>%
+  dplyr::filter(changed_value) %>%
+  dplyr::left_join(screening %>% dplyr::select(paperID, initial_disagreement), by = "paperID") %>%
+  dplyr::mutate(
+    disagreement_group = dplyr::if_else(initial_disagreement,
+                                        figure2_groups[1], figure2_groups[2]),
+    change_type = dplyr::case_when(
+      field == "decision" ~ figure2_types[1],
+      field == "TA_exclCriteria" ~ figure2_types[2],
+      TRUE ~ figure2_types[3]
+    )
+  ) %>% dplyr::distinct(paperID, disagreement_group, change_type)
+figure2_summary <- figure2_papers %>%
+  dplyr::count(disagreement_group, change_type, name = "n_papers") %>%
+  tidyr::complete(disagreement_group = figure2_groups, change_type = figure2_types,
+                  fill = list(n_papers = 0L)) %>%
+  dplyr::mutate(disagreement_group = factor(disagreement_group, levels = figure2_groups),
+                change_type = factor(change_type, levels = rev(figure2_types)))
 outcome_summary <- screening %>%
   dplyr::mutate(outcome = dplyr::case_when(
     final_decision == "Accepted" ~ "Accepted",
@@ -218,20 +241,17 @@ p_outcome <- ggplot(overview_data, aes(x = outcome, y = n_papers, fill = outcome
   theme(legend.position = "none")
 save_figure(p_outcome, "figure_1_unique_paper_outcomes")
 
-p_routes <- ggplot(route_summary, aes(x = review_route, y = n_papers, fill = intervention)) +
-  geom_col(width = 0.65) + coord_flip() + facet_wrap(~intervention, ncol = 1) +
+p_routes <- ggplot(figure2_summary,
+                  aes(x = change_type, y = n_papers, fill = disagreement_group)) +
+  geom_col(width = 0.65) + coord_flip() + facet_wrap(~disagreement_group, ncol = 1) +
   geom_text(aes(label = n_papers), hjust = -0.2, fontface = "bold") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
-  scale_fill_manual(values = c("Changed an existing value" = "#486F91",
-                               "Completed a blank value" = "#C48A32")) +
-  labs(title = "Reviewer 3 interventions by review route",
-       subtitle = "Unique papers within each panel; one paper can appear in both panels",
+  scale_fill_manual(values = c("With initial disagreement" = "#486F91",
+                               "Without initial disagreement" = "#C48A32")) +
+  labs(title = "Changes made by Reviewer 3",
+       subtitle = "Existing values changed; blank-field completions are reported separately",
+       caption = "Unique papers per bar. A paper can contribute to several change types, but only one panel.",
        x = NULL, y = "Unique papers") + plot_theme + theme(legend.position = "none")
-if (nrow(route_summary) == 0) {
-  p_routes <- ggplot() + annotate("text", x = 0, y = 0,
-                                 label = "No active Reviewer 3 changes or completions") +
-    theme_void() + labs(title = "Reviewer 3 interventions")
-}
 save_figure(p_routes, "figure_2a_reviewer3_review_routes", height = 8)
 
 p_reviewers <- ggplot(reviewer_summary,
@@ -326,6 +346,7 @@ openxlsx::write.xlsx(list(
   Source = data.frame(input_file = normalizePath(screening_file, winslash = "/"),
                       input_md5 = input_hash),
   Unique_outcomes = outcome_summary, Review_routes = route_summary,
+  Figure2_changes = figure2_summary, Figure2_papers = figure2_papers,
   Intervention_totals = intervention_totals,
   Decision_changes = decision_changes,
   Reviewer_summary = reviewer_summary, Missing_fields = missing_summary,
