@@ -202,4 +202,40 @@ hash <- tools::md5sum(extra$reviewer3_updated_file)
 error <- tryCatch(eval(parse(text = collision_script), envir = env), error = identity)
 stopifnot(inherits(error, "error"), grepl("must be separate", conditionMessage(error)),
           identical(as.character(tools::md5sum(extra$reviewer3_updated_file)), as.character(hash)))
+# Check the two compatibility blocks with real tidytable objects and masks.
+if (requireNamespace("tidytable", quietly = TRUE)) {
+  pair_start <- grep("^pairwise_agreement <-", script)
+  pair_end <- grep("^disagreement_details <-", script) - 1
+  slot_start <- grep("^reviewer_slots <- reviews", script)
+  slot_end <- grep("^# A subset may contain", script) - 1
+  masked <- new.env()
+  for (name in c("group_by", "summarise", "n", "mutate", "if_else",
+                 "transmute", "arrange", "row_number", "ungroup")) {
+    masked[[name]] <- getExportedValue("tidytable", name)
+  }
+  masked$reviewer_pairs <- tidytable::as_tidytable(data.frame(
+    pair = c("A vs B", "A vs B", "A vs B", "A vs C"),
+    rev1_name_1 = "A", rev1_name_2 = c("B", "B", "B", "C"),
+    decision_1 = c("Accepted", "Rejected", NA, NA),
+    decision_2 = c("Accepted", "Accepted", "Accepted", NA),
+    agrees = c(TRUE, FALSE, FALSE, FALSE)
+  ))
+  eval(parse(text = script[pair_start:pair_end]), envir = masked)
+  agreement <- masked$pairwise_agreement
+  stopifnot(identical(agreement$n_shared, c(3L, 1L)),
+            identical(agreement$n_complete, c(2L, 0L)),
+            identical(agreement$n_agree, c(1L, 0L)),
+            identical(agreement$percent_agreement, c(50, NA_real_)))
+  masked$reviews <- tidytable::as_tidytable(
+    dplyr::mutate(extra_rows, decision = TA_decisionRev1))
+  eval(parse(text = script[slot_start:slot_end]), envir = masked)
+  slots <- masked$reviewer_slots
+  stopifnot(nrow(slots) == 5, !inherits(slots, "tidytable"),
+            slots$reviewer_name_1[slots$paperID == "13"] == "A",
+            is.na(slots$reviewer_name_2[slots$paperID == "13"]),
+            slots$reviewer_name_2[slots$paperID == "17"] == "B")
+  cat("tidytable compatibility checks passed.\n")
+} else {
+  message("tidytable compatibility checks skipped: package not installed.")
+}
 cat("Reviewer 3 regression tests passed, including explicit additional reviews.\n")
