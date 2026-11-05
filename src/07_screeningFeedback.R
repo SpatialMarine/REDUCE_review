@@ -304,6 +304,32 @@ p_missing <- ggplot(missing_plot_data, aes(x = field, y = reviewer, fill = perce
 save_figure(p_missing, "figure_3_missing_fields_by_reviewer",
             height = max(6, 0.35 * nrow(reviewer_summary)))
 
+gap_totals <- field_details %>%
+  dplyr::group_by(field) %>%
+  dplyr::summarise(
+    initial = sum(missing_initial),
+    filled = sum(missing_initial & completed_value),
+    pending = initial - filled,
+    .groups = "drop"
+  )
+gap_bars <- gap_totals %>%
+  tidyr::pivot_longer(c(filled, pending), names_to = "status", values_to = "count") %>%
+  dplyr::mutate(field = factor(field, levels = rev(coding_fields)))
+p_gap_totals <- ggplot(gap_bars, aes(field, count, fill = status)) +
+  geom_col(position = position_stack(reverse = TRUE), width = 0.65) +
+  geom_text(aes(label = ifelse(count > 0, count, "")),
+            position = position_stack(vjust = 0.5, reverse = TRUE), size = 3.5) +
+  coord_flip() +
+  scale_x_discrete(labels = c(decision = "Accepted / Rejected",
+    TA_exclCriteria = "Rejection criterion", Topic = "Topic",
+    TaxaGroup = "Taxa group", fishingGear = "Fishing gear")) +
+  scale_fill_manual(values = c(filled = "#C48A32", pending = "#D9E2EA"),
+                    labels = c(filled = "Filled by Reviewer 3", pending = "Still blank")) +
+  labs(title = "Missing fields across all initial reviews",
+       subtitle = paste(sum(gap_totals$initial), "initial gaps across both reviewer groups"),
+       x = NULL, y = "Fields", fill = NULL) + plot_theme
+save_figure(p_gap_totals, "figure_3b_missing_fields_total")
+
 # 4. Compact reviewer workbooks, with explicit field-level comparisons ---------
 
 feedback_columns <- c("paperID", "title", "abstract", "keywords", "authors", "year", "doi",
@@ -367,6 +393,7 @@ openxlsx::write.xlsx(list(
                       input_md5 = input_hash),
   Unique_outcomes = outcome_summary, Review_routes = route_summary,
   Figure2_changes = figure2_summary, Figure2_papers = figure2_papers,
+  Gap_totals = gap_totals,
   Intervention_totals = intervention_totals,
   Decision_changes = decision_changes,
   Reviewer_summary = reviewer_summary, Missing_fields = missing_summary,
