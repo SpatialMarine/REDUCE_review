@@ -15,39 +15,23 @@ library(writexl)
 library(openxlsx)
 
 
-# 1. Settings -----------------------------------------------------------------
+# 1. Input and output paths -----------------------------------------------------------------
 
-screening_file <- file.path(
-  output_data,
-  "abstract_screening",
-  "abstract_screening_final.xlsx"
-)
+# 1.1. Screening results and manual correction files --------------------------
 
-topic_assignment_file <- file.path(
-  output_data,
-  "abstract_screening_topic_assignments.xlsx"
-)
+screening_file <- file.path(output_data, "abstract_screening", "abstract_screening_final.xlsx")
 
-taxa_assignment_file <- file.path(
-  output_data,
-  "abstract_screening_taxa_assignments.xlsx"
-)
+topic_assignment_file <- file.path(output_data, "abstract_screening_topic_assignments.xlsx")
 
-gear_assignment_file <- file.path(
-  output_data,
-  "abstract_screening_fishingGear_assignments.xlsx"
-)
+taxa_assignment_file <- file.path(output_data, "abstract_screening_taxa_assignments.xlsx")
 
-exclusion_assignment_file <- file.path(
-  output_data,
-  "abstract_screening_exclusion_assignments.xlsx"
-)
+gear_assignment_file <- file.path(output_data, "abstract_screening_fishingGear_assignments.xlsx")
 
-gold_papers_file <- file.path(
-  input_data,
-  "rm_duplicates",
-  "goldPapers.xlsx"
-)
+exclusion_assignment_file <- file.path(output_data, "abstract_screening_exclusion_assignments.xlsx")
+
+# 1.2. Gold-paper reference and export folders --------------------------------
+
+gold_papers_file <- file.path(input_data, "rm_duplicates", "goldPapers.xlsx")
 
 output_dir <- file.path(output_data, "full_text_screening")
 topic_output_dir <- file.path(output_dir, "by_topic")
@@ -55,17 +39,11 @@ topic_output_dir <- file.path(output_dir, "by_topic")
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 dir.create(topic_output_dir, showWarnings = FALSE, recursive = TRUE)
 
-accepted_colour <- "seagreen3"
-rejected_colour <- "firebrick3"
-unclassified_colour <- "grey70"
-
-valid_topics <- c(
-  "Fishing effort", "IUU fishing", "Megafauna catch", "Ghost gear"
-)
-
-
 # 2. Read final abstract-screening dataset ------------------------------------
 
+# 2.1. Locate and read the final screening sheet ------------------------------
+
+# Stop here if script 05 has not produced the final workbook.
 if (!file.exists(screening_file)) {
   stop(
     "Final abstract-screening workbook not found at: ", screening_file,
@@ -73,23 +51,22 @@ if (!file.exists(screening_file)) {
   )
 }
 
+# Check that this workbook contains the final screening sheet.
 if (!"final_screening" %in% excel_sheets(screening_file)) {
-  stop(
-    basename(screening_file),
-    " must contain a worksheet named final_screening."
-  )
+  stop(basename(screening_file), " must contain a worksheet named final_screening.")
 }
 
-final_screening <- read_excel(
-  screening_file,
-  sheet = "final_screening"
-) %>%
+# Read the final decision and coding fields from the output of script 05.
+final_screening <- read_excel(screening_file, sheet = "final_screening") %>%
   mutate(
     across(everything(), as.character),
     paperID = str_squish(paperID),
     final_decision = str_squish(final_decision)
   )
 
+# 2.2. Check the columns and decisions used below -----------------------------
+
+# Check the fields used to classify papers and prepare full-text assignments.
 required_columns <- c(
   "paperID", "final_decision", "TA_exclCriteria_final", "Topic_final",
   "TaxaGroup_final", "fishingGear_final"
@@ -104,11 +81,9 @@ if (length(missing_columns) > 0) {
   )
 }
 
+# Find papers whose final decision falls outside the accepted screening labels.
 invalid_final_decisions <- final_screening %>%
-  filter(
-    is.na(final_decision) |
-      !final_decision %in% c("Accepted", "Rejected")
-  )
+  filter(is.na(final_decision) | !final_decision %in% c("Accepted", "Rejected"))
 
 if (nrow(invalid_final_decisions) > 0) {
   stop(
@@ -121,6 +96,9 @@ if (nrow(invalid_final_decisions) > 0) {
 
 # 3. Homogenise final categories ---------------------------------------------
 
+# 3.1. Standardise the category labels ----------------------------------------
+
+# Trim whitespace and treat empty category labels as missing.
 clean_category <- function(x) {
   x %>%
     str_replace_all("\u00a0", " ") %>%
@@ -128,16 +106,7 @@ clean_category <- function(x) {
     na_if("")
 }
 
-clean_doi <- function(x) {
-  x %>%
-    str_to_lower() %>%
-    str_squish() %>%
-    str_remove("^doi\\s*:\\s*") %>%
-    str_remove("^https?://(dx\\.)?doi\\.org/") %>%
-    str_remove("[\\s\\.;,\\)]+$") %>%
-    na_if("")
-}
-
+# Map variations of exclusion criteria to consistent labels.
 normalise_exclusion <- function(x) {
   x_clean <- x %>%
     clean_category() %>%
@@ -150,6 +119,7 @@ normalise_exclusion <- function(x) {
   )
 }
 
+# Map topic labels to the categories used for the assignment workbooks.
 normalise_topic <- function(x) {
   x_clean <- x %>% clean_category() %>% str_to_lower()
 
@@ -162,6 +132,7 @@ normalise_topic <- function(x) {
   )
 }
 
+# Standardise taxonomic labels before counting megafauna papers.
 normalise_taxa <- function(x) {
   x_clean <- x %>% clean_category() %>% str_to_lower()
 
@@ -171,13 +142,12 @@ normalise_taxa <- function(x) {
     x_clean %in% c("sea bird", "sea birds", "seabird", "seabirds") ~
       "Seabirds",
     x_clean %in% c("sea turtle", "sea turtles") ~ "Sea turtles",
-    x_clean %in% c(
-      "cetacean", "cetaceans", "marine mammal", "marine mammals"
-    ) ~ "Marine mammals",
+    x_clean %in% c("cetacean", "cetaceans", "marine mammal", "marine mammals") ~ "Marine mammals",
     TRUE ~ clean_category(x)
   )
 }
 
+# Standardise fishing gear labels before counting accepted papers by gear.
 normalise_gear <- function(x) {
   x_clean <- x %>% clean_category() %>% str_to_lower()
 
@@ -188,6 +158,8 @@ normalise_gear <- function(x) {
     TRUE ~ clean_category(x)
   )
 }
+
+# 3.2. Expand selections and audit category coverage --------------------------
 
 # Multiple selections are expanded so one paper can contribute to more than
 # one category (for example, "Longline, Trawl").
@@ -204,6 +176,7 @@ expand_categories <- function(data, column, normalise_function) {
     distinct(paperID, category)
 }
 
+# Summarise how source labels were mapped to standard categories.
 audit_categories <- function(
     data,
     column,
@@ -234,6 +207,7 @@ audit_categories <- function(
     )
 }
 
+# Keep papers without a usable category in the counts.
 add_unclassified <- function(
     category_data,
     scope_data,
@@ -246,43 +220,55 @@ add_unclassified <- function(
   bind_rows(category_data, unclassified)
 }
 
+# 3.3. Preserve and read manual corrections -----------------------------------
+
 # Manual correction workbooks are cumulative. Existing rows and user-entered
 # values are preserved; only previously unseen Paper IDs are appended.
 update_assignment_workbook <- function(file, sheet, candidates) {
+  # Skip workbook creation or updates when there are no candidates.
   if (nrow(candidates) == 0) {
     return(invisible(0L))
   }
 
+  # Create the workbook with the requested sheet on the first run.
   if (!file.exists(file)) {
     openxlsx::write.xlsx(setNames(list(candidates), sheet), file, overwrite = TRUE)
     return(invisible(nrow(candidates)))
   }
 
+  # Check that the existing workbook has the expected sheet before appending rows.
   if (!sheet %in% excel_sheets(file)) {
     stop(basename(file), " must contain a worksheet named ", sheet, ".")
   }
 
+  # Read saved entries as text and trim IDs so the same paper matches across runs.
   existing <- read_excel(file, sheet = sheet, col_types = "text") %>%
     mutate(paperID = str_squish(paperID))
 
+  # Stop if a saved ID occurs twice so the workbook has one row per paper.
   if (anyDuplicated(existing$paperID)) {
     stop(basename(file), " contains duplicated Paper IDs.")
   }
 
+  # Add blank values for columns present in the saved workbook but absent from the candidates.
   missing_existing_columns <- setdiff(names(existing), names(candidates))
   for (column in missing_existing_columns) {
     candidates[[column]] <- NA_character_
   }
 
+  # Keep only unseen paper IDs and match the existing worksheet column order.
   new_rows <- candidates %>%
     anti_join(existing %>% select(paperID), by = "paperID") %>%
     select(all_of(names(existing)))
 
+  # Leave the existing workbook untouched when every candidate is already listed.
   if (nrow(new_rows) == 0) {
     return(invisible(0L))
   }
 
+  # Load the existing workbook so its sheets and saved entries are preserved.
   workbook <- openxlsx::loadWorkbook(file)
+  # Append after the existing rows and their header, with no second header.
   openxlsx::writeData(
     workbook,
     sheet = sheet,
@@ -291,19 +277,21 @@ update_assignment_workbook <- function(file, sheet, candidates) {
     colNames = FALSE,
     keepNA = FALSE
   )
+  # Save the workbook after adding the new rows.
   openxlsx::saveWorkbook(workbook, file, overwrite = TRUE)
 
-  message(
-    "Appended ", nrow(new_rows), " new Paper ID(s) to: ", file
-  )
+  # Report how many IDs were added and return that count without printing it again.
+  message("Appended ", nrow(new_rows), " new Paper ID(s) to: ", file)
   invisible(nrow(new_rows))
 }
 
+# Read corrections into a common set of columns for the joins below.
 read_assignment_workbook <- function(
     file,
     sheet,
     assignment_column,
     notes_column) {
+  # Return an empty table with the expected columns so downstream joins can still run.
   if (!file.exists(file)) {
     return(tibble(
       paperID = character(),
@@ -312,17 +300,17 @@ read_assignment_workbook <- function(
     ))
   }
 
+  # Read IDs, corrections and notes as text and check that their columns are present.
   data <- read_excel(file, sheet = sheet, col_types = "text")
   required <- c("paperID", assignment_column, notes_column)
   missing <- setdiff(required, names(data))
 
+  # Identify the missing columns before trying to use their values.
   if (length(missing) > 0) {
-    stop(
-      "Missing column(s) in ", basename(file), ": ",
-      paste(missing, collapse = ", ")
-    )
+    stop("Missing column(s) in ", basename(file), ": ", paste(missing, collapse = ", "))
   }
 
+  # Use the same ID, value and notes names for each correction type and drop rows without an ID.
   data <- data %>%
     transmute(
       paperID = str_squish(paperID),
@@ -331,6 +319,7 @@ read_assignment_workbook <- function(
     ) %>%
     filter(!is.na(paperID))
 
+  # Require a single correction row per ID so the join cannot duplicate papers.
   if (anyDuplicated(data$paperID)) {
     stop(basename(file), " contains duplicated Paper IDs.")
   }
@@ -338,19 +327,29 @@ read_assignment_workbook <- function(
   data
 }
 
+# 3.4. Separate accepted and rejected papers ----------------------------------
+
+# Keep accepted papers for topic, taxon, gear and full-text assignments.
 accepted_papers <- final_screening %>%
   filter(final_decision == "Accepted")
 
+# Keep rejected papers for the exclusion-criterion audit.
 rejected_papers <- final_screening %>%
   filter(final_decision == "Rejected")
+
+# 3.5. Apply topic assignments ------------------------------------------------
+
+valid_topics <- c("Fishing effort", "IUU fishing", "Megafauna catch", "Ghost gear")
 
 # Topic assignments are kept in a separate manual workbook, following the same
 # principle as reviewer 3 adjudication: the script creates the template once
 # and never overwrites it.
+# Identify accepted papers that need a manually assigned topic.
 original_missing_topic_ids <- accepted_papers %>%
   filter(is.na(clean_category(Topic_final))) %>%
   pull(paperID)
 
+# Prepare the columns Reviewer 3 can use to classify accepted papers without a topic.
 topic_assignment_candidates <- accepted_papers %>%
   filter(paperID %in% original_missing_topic_ids) %>%
   select(any_of(c(
@@ -372,20 +371,15 @@ update_assignment_workbook(
   topic_assignment_candidates
 )
 
+# Reuse the saved manual topic assignments if the workbook exists.
 if (file.exists(topic_assignment_file)) {
   if (!"topic_assignments" %in% excel_sheets(topic_assignment_file)) {
-    stop(
-      basename(topic_assignment_file),
-      " must contain a worksheet named topic_assignments."
-    )
+    stop(basename(topic_assignment_file), " must contain a worksheet named topic_assignments.")
   }
 
-  topic_assignments <- read_excel(
-    topic_assignment_file,
-    sheet = "topic_assignments",
-    col_types = "text"
-  )
+  topic_assignments <- read_excel(topic_assignment_file, sheet = "topic_assignments", col_types = "text")
 
+  # Check the columns needed to apply the saved topic and notes.
   required_assignment_columns <- c(
     "paperID", "Topic_assignment", "Topic_assignment_notes",
     "TaxaGroup_assignment", "fishingGear_assignment"
@@ -396,10 +390,7 @@ if (file.exists(topic_assignment_file)) {
   )
 
   if (length(missing_assignment_columns) > 0) {
-    stop(
-      "Missing topic-assignment column(s): ",
-      paste(missing_assignment_columns, collapse = ", ")
-    )
+    stop("Missing topic-assignment column(s): ", paste(missing_assignment_columns, collapse = ", "))
   }
 
   topic_assignments <- topic_assignments %>%
@@ -412,6 +403,7 @@ if (file.exists(topic_assignment_file)) {
     ) %>%
     filter(!is.na(paperID))
 
+  # Find papers with more than one manual topic assignment row.
   duplicated_assignment_ids <- topic_assignments %>%
     count(paperID, name = "n_rows") %>%
     filter(n_rows > 1)
@@ -423,10 +415,8 @@ if (file.exists(topic_assignment_file)) {
     )
   }
 
-  unknown_assignment_ids <- setdiff(
-    topic_assignments$paperID,
-    original_missing_topic_ids
-  )
+  # Keep historical assignments even when a paper no longer needs a manual topic.
+  unknown_assignment_ids <- setdiff(topic_assignments$paperID, original_missing_topic_ids)
 
   if (length(unknown_assignment_ids) > 0) {
     message(
@@ -435,11 +425,9 @@ if (file.exists(topic_assignment_file)) {
     )
   }
 
+  # Check that manual topic values use one of the permitted categories.
   invalid_topic_assignments <- topic_assignments %>%
-    filter(
-      !is.na(Topic_assignment),
-      !Topic_assignment %in% valid_topics
-    )
+    filter(!is.na(Topic_assignment), !Topic_assignment %in% valid_topics)
 
   if (nrow(invalid_topic_assignments) > 0) {
     stop(
@@ -459,6 +447,7 @@ if (file.exists(topic_assignment_file)) {
   )
 }
 
+# Join manual corrections by paper ID and update the relevant classification.
 accepted_papers <- accepted_papers %>%
   left_join(topic_assignments, by = "paperID") %>%
   mutate(
@@ -476,6 +465,7 @@ accepted_papers <- accepted_papers %>%
     )
   )
 
+# List accepted papers that still need a topic after applying manual corrections.
 topic_assignment_required <- accepted_papers %>%
   filter(is.na(clean_category(Topic_for_full_text))) %>%
   select(any_of(c(
@@ -487,6 +477,9 @@ topic_assignment_required <- accepted_papers %>%
   ))) %>%
   arrange(suppressWarnings(as.numeric(paperID)), paperID)
 
+# 3.6. Apply and count exclusion criteria -------------------------------------
+
+# Prepare manual correction rows for rejected papers with an unclassified criterion.
 exclusion_assignment_candidates <- rejected_papers %>%
   filter(is.na(clean_category(TA_exclCriteria_final))) %>%
   select(any_of(c(
@@ -507,6 +500,7 @@ update_assignment_workbook(
   exclusion_assignment_candidates
 )
 
+# Read saved exclusion corrections for the rejected papers.
 exclusion_corrections <- read_assignment_workbook(
   exclusion_assignment_file,
   "exclusion_assignments",
@@ -514,6 +508,7 @@ exclusion_corrections <- read_assignment_workbook(
   "TA_exclCriteria_assignment_notes"
 )
 
+# Match exclusion corrections by paper ID and retain the source value alongside them.
 rejected_papers <- rejected_papers %>%
   left_join(exclusion_corrections, by = "paperID") %>%
   mutate(
@@ -524,13 +519,19 @@ rejected_papers <- rejected_papers %>%
   ) %>%
   select(-manual_value, -manual_notes)
 
+# Expand exclusion labels into paper-category pairs and account for uncategorised papers.
 exclusion_membership <- rejected_papers %>%
   expand_categories("TA_exclCriteria_for_full_text", normalise_exclusion) %>%
   add_unclassified(rejected_papers)
 
+# 3.7. Expand topic assignments -----------------------------------------------
+
+# Expand multiple topics into one row per paper and topic for counting and export.
 topic_membership <- accepted_papers %>%
   expand_categories("Topic_for_full_text", normalise_topic) %>%
   add_unclassified(accepted_papers, "Unspecified")
+
+# 3.8. Apply taxonomic corrections for megafauna papers -----------------------
 
 # Taxonomic-group summaries are meaningful only for papers classified under
 # Megafauna catch.
@@ -540,6 +541,7 @@ megafauna_papers <- accepted_papers %>%
     by = "paperID"
   )
 
+# Prepare manual correction rows for megafauna papers with unclassified taxa.
 taxa_assignment_candidates <- megafauna_papers %>%
   filter(is.na(clean_category(TaxaGroup_for_full_text))) %>%
   select(any_of(c(
@@ -561,6 +563,7 @@ update_assignment_workbook(
   taxa_assignment_candidates
 )
 
+# Read saved taxonomic corrections for megafauna papers.
 taxa_corrections <- read_assignment_workbook(
   taxa_assignment_file,
   "taxa_assignments",
@@ -568,6 +571,7 @@ taxa_corrections <- read_assignment_workbook(
   "TaxaGroup_assignment_notes"
 )
 
+# Match the taxonomic corrections by paper ID.
 megafauna_papers <- megafauna_papers %>%
   left_join(taxa_corrections, by = "paperID") %>%
   mutate(
@@ -578,10 +582,14 @@ megafauna_papers <- megafauna_papers %>%
   ) %>%
   select(-manual_value, -manual_notes)
 
+# Build taxonomic memberships for counting, including papers without a usable label.
 taxa_membership <- megafauna_papers %>%
   expand_categories("TaxaGroup_for_full_text", normalise_taxa) %>%
   add_unclassified(megafauna_papers)
 
+# 3.9. Apply fishing gear corrections -----------------------------------------
+
+# Prepare manual correction rows for accepted papers with unclassified gear.
 gear_assignment_candidates <- accepted_papers %>%
   filter(is.na(clean_category(fishingGear_for_full_text))) %>%
   select(any_of(c(
@@ -603,6 +611,7 @@ update_assignment_workbook(
   gear_assignment_candidates
 )
 
+# Read saved fishing gear corrections for accepted papers.
 gear_corrections <- read_assignment_workbook(
   gear_assignment_file,
   "fishingGear_assignments",
@@ -610,6 +619,7 @@ gear_corrections <- read_assignment_workbook(
   "fishingGear_assignment_notes"
 )
 
+# Join manual corrections by paper ID and update the relevant classification.
 accepted_papers <- accepted_papers %>%
   left_join(gear_corrections, by = "paperID") %>%
   mutate(
@@ -620,10 +630,14 @@ accepted_papers <- accepted_papers %>%
   ) %>%
   select(-manual_value, -manual_notes)
 
+# Expand gear selections for counting, including accepted papers with no usable gear label.
 gear_membership <- accepted_papers %>%
   expand_categories("fishingGear_for_full_text", normalise_gear) %>%
   add_unclassified(accepted_papers)
 
+# 3.10. Summarise the category counts and standardisation audit ---------------
+
+# Count unique papers within each category. A paper may contribute to more than one category.
 category_counts <- list(
   "Exclusion criteria" = exclusion_membership,
   "Topic" = topic_membership,
@@ -635,6 +649,7 @@ category_counts <- list(
       count(category, name = "n_papers", sort = TRUE)
   })
 
+# Combine the label audits for the four classification fields.
 category_standardisation_audit <- bind_rows(
   audit_categories(
     rejected_papers,
@@ -666,7 +681,22 @@ category_standardisation_audit <- bind_rows(
 
 # 4. Audit gold papers --------------------------------------------------------
 
+# 4.1. Match reference papers and check screening outcomes --------------------
+
+# Normalise DOI text so the gold-paper reference can be matched consistently.
+clean_doi <- function(x) {
+  x %>%
+    str_to_lower() %>%
+    str_squish() %>%
+    str_remove("^doi\\s*:\\s*") %>%
+    str_remove("^https?://(dx\\.)?doi\\.org/") %>%
+    str_remove("[\\s\\.;,\\)]+$") %>%
+    na_if("")
+}
+
+# Run the reference-paper audit when the gold-paper workbook is available.
 if (file.exists(gold_papers_file)) {
+  # Read the reference list and prepare DOI values for matching.
   gold_papers <- read_excel(gold_papers_file) %>%
     transmute(
       gold_category = clean_category(gold_category),
@@ -675,6 +705,7 @@ if (file.exists(gold_papers_file)) {
     filter(!is.na(doi)) %>%
     distinct(gold_category, doi)
 
+  # Find DOIs shared by multiple screening records before matching reference papers.
   duplicate_screening_dois <- final_screening %>%
     transmute(doi = clean_doi(doi)) %>%
     filter(!is.na(doi)) %>%
@@ -688,12 +719,10 @@ if (file.exists(gold_papers_file)) {
     )
   }
 
+  # Match reference papers to the screening data and attach their final outcomes.
   gold_audit <- gold_papers %>%
     group_by(doi) %>%
-    summarise(
-      gold_categories = paste(sort(unique(gold_category)), collapse = ", "),
-      .groups = "drop"
-    ) %>%
+    summarise(gold_categories = paste(sort(unique(gold_category)), collapse = ", "), .groups = "drop") %>%
     left_join(
       final_screening %>%
         transmute(
@@ -745,6 +774,7 @@ if (file.exists(gold_papers_file)) {
     ) %>%
     arrange(gold_screening_status, gold_categories, doi)
 
+  # Count reference papers by screening outcome.
   gold_summary <- gold_audit %>%
     count(gold_screening_status, name = "n_gold_papers") %>%
     complete(
@@ -755,6 +785,7 @@ if (file.exists(gold_papers_file)) {
       fill = list(n_gold_papers = 0)
     )
 
+  # Select reference papers whose screening outcome needs attention.
   gold_attention <- gold_audit %>%
     filter(gold_screening_status != "Accepted")
 
@@ -772,17 +803,28 @@ if (file.exists(gold_papers_file)) {
   )
 
   gold_audit <- tibble()
+  # Count reference papers by screening outcome.
   gold_summary <- tibble()
+  # Select reference papers whose screening outcome needs attention.
   gold_attention <- tibble()
 }
 
 
 # 5. Category plots -----------------------------------------------------------
 
+# 5.1. Set up the shared category plot ----------------------------------------
+
+accepted_colour <- "seagreen3"
+rejected_colour <- "firebrick3"
+unclassified_colour <- "grey70"
+
+# Use the same chart layout for all four category summaries.
 plot_category_counts <- function(count_data, title, subtitle, colour, filename) {
+  # Order the category labels by the number of papers.
   plot_data <- count_data %>%
     mutate(category = reorder(category, n_papers))
 
+  # Draw the category totals and distinguish unclassified entries by colour.
   p <- ggplot(plot_data, aes(x = category, y = n_papers)) +
     geom_col(
       aes(fill = category %in% c("Unclassified", "Unspecified")),
@@ -801,12 +843,7 @@ plot_category_counts <- function(count_data, title, subtitle, colour, filename) 
     scale_y_continuous(
       expand = expansion(mult = c(0, 0.12))
     ) +
-    labs(
-      title = title,
-      subtitle = subtitle,
-      x = NULL,
-      y = "Number of unique papers"
-    ) +
+    labs(title = title, subtitle = subtitle, x = NULL, y = "Number of unique papers") +
     theme_minimal(base_size = 13) +
     theme(
       panel.grid.major.y = element_blank(),
@@ -827,6 +864,8 @@ plot_category_counts <- function(count_data, title, subtitle, colour, filename) 
   p
 }
 
+# 5.2. Rejected papers by exclusion criterion ---------------------------------
+
 p_exclusion <- plot_category_counts(
   category_counts[["Exclusion criteria"]],
   "Rejected papers by exclusion criterion",
@@ -834,6 +873,9 @@ p_exclusion <- plot_category_counts(
   rejected_colour,
   "papers_by_exclusion_criterion.png"
 )
+print(p_exclusion)
+
+# 5.3. Accepted papers by topic -----------------------------------------------
 
 p_topic <- plot_category_counts(
   category_counts[["Topic"]],
@@ -842,6 +884,9 @@ p_topic <- plot_category_counts(
   accepted_colour,
   "accepted_papers_by_topic.png"
 )
+print(p_topic)
+
+# 5.4. Megafauna papers by taxonomic group ------------------------------------
 
 p_taxa <- plot_category_counts(
   category_counts[["Taxonomic group"]],
@@ -850,6 +895,9 @@ p_taxa <- plot_category_counts(
   accepted_colour,
   "accepted_papers_by_taxonomic_group.png"
 )
+print(p_taxa)
+
+# 5.5. Accepted papers by fishing gear ----------------------------------------
 
 p_gear <- plot_category_counts(
   category_counts[["Fishing gear"]],
@@ -858,32 +906,22 @@ p_gear <- plot_category_counts(
   accepted_colour,
   "accepted_papers_by_fishing_gear.png"
 )
-
-# Explicit printing ensures every plot is displayed when the script is sourced
-# from RStudio, not only when commands are run line by line.
-print(p_exclusion)
-print(p_topic)
-print(p_taxa)
 print(p_gear)
 
+# 5.6. Screening outcomes for gold papers -------------------------------------
+
+# Draw the reference-paper outcome chart only when audit results exist.
 if (nrow(gold_summary) > 0) {
   p_gold <- gold_summary %>%
     mutate(
       gold_screening_status = factor(
         gold_screening_status,
-        levels = c(
-          "Accepted", "Rejected", "Not found in screening dataset",
-          "Missing final decision"
-        )
+        levels = c("Accepted", "Rejected", "Not found in screening dataset", "Missing final decision")
       )
     ) %>%
     ggplot(aes(x = gold_screening_status, y = n_gold_papers)) +
     geom_col(aes(fill = gold_screening_status), width = 0.7) +
-    geom_text(
-      aes(label = n_gold_papers),
-      vjust = -0.35,
-      fontface = "bold"
-    ) +
+    geom_text(aes(label = n_gold_papers), vjust = -0.35, fontface = "bold") +
     scale_fill_manual(values = c(
       "Accepted" = accepted_colour,
       "Rejected" = rejected_colour,
@@ -891,11 +929,7 @@ if (nrow(gold_summary) > 0) {
       "Missing final decision" = "#E69F00"
     )) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
-    labs(
-      title = "Screening outcomes for gold papers",
-      x = NULL,
-      y = "Number of unique gold papers"
-    ) +
+    labs(title = "Screening outcomes for gold papers", x = NULL, y = "Number of unique gold papers") +
     theme_minimal(base_size = 13) +
     theme(
       axis.text.x = element_text(angle = 25, hjust = 1),
@@ -919,15 +953,16 @@ if (nrow(gold_summary) > 0) {
 
 # 6. Prepare accepted papers for full-text assignment -------------------------
 
+# 6.1. Build and export the full-text screening list --------------------------
+
+# Combine each paper's categories into one cell for the full-text workbook.
 collapse_membership <- function(data, output_column) {
   data %>%
     group_by(paperID) %>%
-    summarise(
-      "{output_column}" := paste(sort(category), collapse = ", "),
-      .groups = "drop"
-    )
+    summarise("{output_column}" := paste(sort(category), collapse = ", "), .groups = "drop")
 }
 
+# Join the standardised classifications by paperID and add empty full-text review fields.
 accepted_full_text <- accepted_papers %>%
   left_join(
     collapse_membership(topic_membership, "Topic_standardised"),
@@ -960,6 +995,9 @@ write_xlsx(
   file.path(output_dir, "accepted_full_text_all.xlsx")
 )
 
+# 6.2. Export one assignment workbook per topic -------------------------------
+
+# Turn a topic label into a filename without spaces or punctuation.
 safe_filename <- function(x) {
   x %>%
     str_to_lower() %>%
@@ -967,12 +1005,15 @@ safe_filename <- function(x) {
     str_remove_all("^_|_$")
 }
 
+# Export one workbook per assigned topic and omit the Unspecified category.
 topic_categories <- topic_membership$category %>%
   unique() %>%
   setdiff("Unspecified") %>%
   sort()
 
+# Write a separate assignment workbook for each topic.
 for (topic_name in topic_categories) {
+  # Select the papers in this topic and attach their full-text screening fields.
   topic_papers <- topic_membership %>%
     filter(category == topic_name) %>%
     select(paperID) %>%
@@ -988,14 +1029,17 @@ for (topic_name in topic_categories) {
   )
 }
 
+# 6.3. Export the category counts and audit -----------------------------------
+
+# Export the category counts and the standardisation audit in one workbook.
 write_xlsx(
-  c(
-    category_counts,
-    list("Standardisation audit" = category_standardisation_audit)
-  ),
+  c(category_counts, list("Standardisation audit" = category_standardisation_audit)),
   file.path(output_dir, "final_screening_category_counts.xlsx")
 )
 
+# 6.4. Export the gold-paper audit --------------------------------------------
+
+# Export the reference audit only when there are papers to report.
 if (nrow(gold_audit) > 0) {
   write_xlsx(
     list(
@@ -1006,6 +1050,8 @@ if (nrow(gold_audit) > 0) {
     file.path(output_dir, "gold_paper_screening_audit.xlsx")
   )
 }
+
+# 6.5. Report the files and remaining classifications -------------------------
 
 message(
   "Done! Full-text screening files saved in: ", output_dir, "\n",
