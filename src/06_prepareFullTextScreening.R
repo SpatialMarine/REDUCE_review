@@ -254,11 +254,7 @@ update_assignment_workbook <- function(file, sheet, candidates) {
   }
 
   if (!file.exists(file)) {
-    openxlsx::write.xlsx(
-      setNames(list(candidates), sheet),
-      file,
-      overwrite = TRUE
-    )
+    openxlsx::write.xlsx(setNames(list(candidates), sheet), file, overwrite = TRUE)
     return(invisible(nrow(candidates)))
   }
 
