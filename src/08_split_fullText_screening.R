@@ -408,3 +408,113 @@ for (i in seq_along(plot_groups)) {
   ggsave(file.path(figure_dir, paste0(plot_files[i], ".png")), p_gear_workload,
          width = 10, height = plot_height, dpi = 300, bg = "white")
 }
+
+# 7. Show the composition of the article set -----------------------------------
+
+# 7.1. Count unique articles by topic and show their share of the full set -------
+
+# Use the paper table so a second reviewer does not add another article.
+article_topics <- papers %>%
+  count(topic, name = "n_articles") %>%
+  mutate(topic = factor(topic, levels = display_topics),
+         share = n_articles / sum(n_articles))
+stopifnot(sum(article_topics$n_articles) == nrow(papers))
+
+# Use the same topic colours in both panels so the labels identify the slices.
+p_article_topics <- ggplot(article_topics, aes(n_articles, topic, fill = topic)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = n_articles), hjust = -0.15) +
+  scale_fill_manual(values = topic_colours) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.14))) +
+  labs(title = "Articles by topic", x = "Unique articles", y = NULL) +
+  plot_theme + theme(legend.position = "none")
+
+p_article_shares <- ggplot(article_topics, aes(x = "", y = share, fill = topic)) +
+  geom_col(width = 1, colour = "white") +
+  geom_text(aes(label = scales::percent(share, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5), colour = "white", fontface = "bold") +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = topic_colours) +
+  labs(title = paste(nrow(papers), "unique articles")) +
+  theme_void(base_size = 12) +
+  theme(legend.position = "none", plot.title = element_text(face = "bold", hjust = 0.5))
+
+# Place the count bars and the pie side by side in one PNG using base R grid.
+article_topic_figure <- grid::grobTree(
+  ggplotGrob(p_article_topics), vp = grid::viewport(x = 0.29, width = 0.56)
+)
+article_share_figure <- grid::grobTree(
+  ggplotGrob(p_article_shares), vp = grid::viewport(x = 0.78, width = 0.42)
+)
+p_article_composition <- grid::grobTree(article_topic_figure, article_share_figure)
+
+grid::grid.newpage()
+
+grid::grid.draw(p_article_composition)
+
+ggsave(file.path(figure_dir, "10_articles_by_topic.png"), p_article_composition,
+       width = 11, height = 5, dpi = 300, bg = "white")
+
+# 7.2. Compare gear shares across IUU, fishing effort and ghost gear -------------
+
+# Use the same gear categories as Workload, with one gear category per article.
+article_gear <- papers %>%
+  transmute(topic, gear_label = factor(gear_levels[gear_index], levels = gear_levels),
+            taxon = taxon_index)
+
+gear_topics <- c("IUU fishing", "Fishing effort", "Ghost gear")
+
+article_gear_shares <- article_gear %>%
+  filter(topic %in% gear_topics) %>%
+  count(topic, gear_label, name = "n_articles") %>%
+  group_by(topic) %>%
+  mutate(n_topic = sum(n_articles), share = n_articles / n_topic,
+         topic_label = paste0(topic, " (n = ", n_topic, ")")) %>%
+  ungroup() %>%
+  arrange(match(topic, gear_topics)) %>%
+  mutate(topic_label = factor(topic_label, levels = rev(unique(topic_label))))
+
+# Verify the percentage denominator separately for each topic.
+gear_share_totals <- article_gear_shares %>% summarise(total = sum(share), .by = topic)
+stopifnot(all(abs(gear_share_totals$total - 1) < 1e-10))
+
+# Use one shared gear palette so the same colour can be compared across bars.
+article_gear_colours <- setNames(gear_palettes[["Megafauna catch"]], gear_levels)
+
+p_article_gear <- ggplot(article_gear_shares, aes(share, topic_label, fill = gear_label)) +
+  geom_col(width = 0.65) +
+  scale_fill_manual(values = article_gear_colours, drop = FALSE) +
+  scale_x_continuous(labels = scales::label_percent(), expand = expansion(mult = c(0, 0))) +
+  labs(title = "Gear composition by topic", x = "Share of articles within topic", y = NULL, fill = NULL) +
+  plot_theme
+
+print(p_article_gear)
+
+ggsave(file.path(figure_dir, "11_articles_gear_share_by_topic.png"), p_article_gear,
+       width = 10, height = 4.5, dpi = 300, bg = "white")
+
+# 7.3. Count megafauna articles by taxon and gear --------------------------------
+
+# Keep mixed taxa and unclassified taxa separate, as in the workload workbook.
+article_taxa <- c(taxon_labels, "Mixed taxa", "Unclassified taxon")
+megafauna_articles <- article_gear %>%
+  filter(topic == "Megafauna catch") %>%
+  mutate(taxon = factor(article_taxa[taxon], levels = rev(article_taxa))) %>%
+  count(taxon, gear_label, name = "n_articles")
+taxon_totals <- megafauna_articles %>% summarise(n_articles = sum(n_articles), .by = taxon)
+stopifnot(sum(taxon_totals$n_articles) == sum(papers$topic == "Megafauna catch"))
+
+# Label the total at the end of each stack to show the size of each taxon group.
+p_megafauna_articles <- ggplot(megafauna_articles, aes(n_articles, taxon, fill = gear_label)) +
+  geom_col(width = 0.7) +
+  geom_text(data = taxon_totals, aes(n_articles, taxon, label = n_articles),
+            inherit.aes = FALSE, hjust = -0.15) +
+  scale_fill_manual(values = article_gear_colours, drop = FALSE) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.13))) +
+  labs(title = "Megafauna articles by taxon and gear", x = "Unique articles", y = NULL, fill = NULL) +
+  plot_theme
+
+print(p_megafauna_articles)
+
+ggsave(file.path(figure_dir, "12_megafauna_articles_by_taxon_and_gear.png"), p_megafauna_articles,
+       width = 10, height = 5.5, dpi = 300, bg = "white")
