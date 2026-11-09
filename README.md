@@ -97,6 +97,22 @@ one feedback workbook per initial reviewer, and a summary workbook under
 inputs or send feedback to reviewers. See the [feedback guide](guides/screening_feedback.md)
 for counting rules, denominators, missing-field applicability and limitations.
 
+### Study area tracer
+
+Use the [study area tracer](docs/study-area-tracer/) to draw or revise a study-area outline from a PDF map in your browser.
+
+To run it locally on Windows, double-click `docs/study-area-tracer/start-local.cmd`. On other platforms, run `python3 docs/study-area-tracer/serve.py` from the repository root. Keep the launcher window open while you work.
+
+1. Choose a PDF and open the page containing the map.
+2. Click two opposite corners to select a panel. Use **Zoom** to inspect the crop.
+3. Click along the boundary, or use **Load reference JSON** and **Edit this outline** to revise an existing trace. You can move, add, delete or undo vertices.
+4. Click **Close outline**, review the shape and select **Download JSON**.
+
+PDFs and trace files are processed in the browser. The exported coordinates are PDF page pixels. Georeferencing is a separate step.
+
+The tool bundles PDF.js 6.5.438 under its [Apache 2.0 licence](docs/study-area-tracer/vendor/LICENSE).
+
+
 ### Data availability
 
 See Data availability statement in the published article

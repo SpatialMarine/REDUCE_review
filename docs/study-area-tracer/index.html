@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REDUCE | Study area tracer</title>
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./app.mjs"></script>
+</head>
+<body>
+<header class="brand"><span>REDUCE</span><span>Full-text review tools</span></header>
+<main>
+  <h1>Study area tracer</h1>
+  <p class="intro">Trace a study-area boundary from a PDF map. Your files stay in this browser.</p>
+  <ol id="steps" class="steps">
+    <li>Open PDF</li><li>Select map</li><li>Trace outline</li><li>Review and save</li>
+  </ol>
+  <section class="workspace" aria-labelledby="heading">
+    <div class="guidance">
+      <h2 id="heading"></h2>
+      <p id="instructions"></p>
+      <div id="file-tools" class="tools">
+        <label class="button primary">Choose PDF <input id="pdf" type="file" accept=".pdf,application/pdf"></label>
+        <span id="filename">No PDF selected</span>
+        <button id="previous" aria-label="Previous page">←</button>
+        <label>Page <input id="page" type="number" min="1" step="1" value="1"></label>
+        <span id="page-count"></span>
+        <button id="next" aria-label="Next page">→</button>
+        <button id="open">Open page</button>
+      </div>
+      <div id="crop-tools" class="tools" hidden><button id="back-file">Change PDF or page</button></div>
+      <div id="draw-tools" class="tools" hidden>
+        <button id="back-page">Back to page</button>
+        <label class="button">Load reference JSON <input id="reference" type="file" accept=".json,application/json"></label>
+        <select id="reference-choice" aria-label="Saved outline" hidden></select>
+        <button id="edit-reference" disabled>Edit this outline</button>
+        <button id="add-point" aria-pressed="false" hidden>Add point</button>
+        <button id="delete-point" disabled hidden>Delete point</button>
+        <button id="undo">Undo</button><button id="clear">Start over</button>
+        <button class="primary" id="close-outline">Close outline</button>
+      </div>
+      <div id="review-tools" class="tools" hidden>
+        <button id="edit">Back to editing</button>
+        <button class="primary" id="save">Download JSON</button>
+      </div>
+      <div id="zoom-tools" class="tools" hidden>
+        <label>Zoom <select id="zoom"><option value="1">Fit panel</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option></select></label>
+        <span class="key"><i></i> New outline</span><span class="key blue"><i></i> Saved reference</span>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+    </div>
+    <div id="viewport" class="viewport" hidden>
+      <div id="map" class="map"><canvas id="image" aria-label="PDF map"></canvas><canvas id="overlay" aria-label="Click to trace the study area"></canvas></div>
+    </div>
+    <div id="empty" class="empty"><strong>Open a PDF to start</strong><span>The map preview will appear here.</span></div>
+  </section>
+  <p class="footnote">The JSON stores PDF page pixels. Geographic coordinates are assigned in a separate step.</p>
+</main>
+</body>
+</html>
