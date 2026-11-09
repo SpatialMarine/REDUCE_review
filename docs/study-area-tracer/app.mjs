@@ -9,6 +9,7 @@ const ink = overlay.getContext("2d");
 const previewDpi = 125, detailDpi = 600;
 let pdf, filename, fingerprint, page = 1, stage = 0, busy = false, crop, corner, points = [];
 let saved = [], selected = -1, reference = [];
+let traceVersion = 1;
 let editing = false, activeVertex = -1, insertPoint = false, drag = null, history = [];
 const pagePoint = ([x, y]) => [x + crop.x, y + crop.y].map(v => +v.toFixed(8));
 const outputStem = () => `${filename.replace(/\.pdf$/i, "")}_page${page}_panel_${crop.x}_${crop.y}_${crop.width}x${crop.height}`;
@@ -145,6 +146,7 @@ $("pdf").onchange = () => attempt(async () => {
     standardFontDataUrl: base + "standard_fonts/", wasmUrl: base + "wasm/"
   }).promise;
   filename = file.name;
+  traceVersion = 1;
   $("filename").textContent = filename;
   $("page").max = pdf.numPages;
   $("page-count").textContent = `of ${pdf.numPages}`;
@@ -348,6 +350,27 @@ $("close-outline").onclick = () => {
   showStep(3); calibration.refresh(); status("Outline closed. Check it before downloading.");
 };
 $("edit").onclick = () => { calibration.cancelPlacement(); showStep(2); marks(); status(); };
+
+// Save an editable image-space draft while keeping other outlines in the reference file.
+$("save").onclick = () => {
+  const next = saved.slice();
+  const record = { ...saved[selected] };
+  delete record.pdf_md5;
+  delete record.calibration;
+  delete record.geographic_status;
+  Object.assign(record, {
+    pdf_file: filename, pdf_page: page, render_dpi: detailDpi, crop,
+    coordinate_space: "PDF page pixels, top-left origin",
+    status: "Digitised in image space; geographic validation pending",
+    vertices: [...points, points[0]].map(pagePoint)
+  });
+  if (selected >= 0) next[selected] = record;
+  else next.push(record);
+
+  const stem = filename.replace(/\.pdf$/i, "");
+  const name = `${stem}_studyArea_trace_web_v${String(traceVersion++).padStart(2, "0")}.json`;
+  download(name, JSON.stringify(next, null, 2), "application/json");
+};
 
 $("load-calibration").onchange = () => attempt(async () => {
   const file = $("load-calibration").files[0];

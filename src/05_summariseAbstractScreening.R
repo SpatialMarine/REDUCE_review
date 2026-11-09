@@ -14,38 +14,42 @@ library(stringr)
 library(ggplot2)
 library(writexl)
 
-# relationship in reviewer_pairs requires dplyr 1.1.1 or later.
-if (packageVersion("dplyr") < "1.1.1") {
-  stop("Please install dplyr 1.1.1 or later.")
-}
+# 1. Input and output paths ---------------------------------------------------
 
-
-# 1. Settings -----------------------------------------------------------------
+# 1.1. Initial reviewer files and export folder ------------------------------
 
 folder_path <- file.path(input_data, "abstracts_byReviewer", "Done")
 output_dir <- file.path(output_data, "abstract_screening")
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
-# During title/abstract screening, retaining a paper accepted by either reviewer
-# is the conservative option. Disagreements are still exported for resolution.
-# Change to "agreement_only" if only unanimously accepted papers should proceed.
-resolution_policy <- "include_if_any_accept"
-if (!resolution_policy %in% c("include_if_any_accept", "agreement_only")) {
-  stop("Unknown resolution_policy: ", resolution_policy)
-}
-
-accepted_colour <- "seagreen3"
-rejected_colour <- "firebrick3"
-disagreement_colour <- "#E69F00"
-missing_colour <- "grey80"
+# 1.2. Manual Reviewer 3 workbook --------------------------------------------
 
 # Reviewer 3 completes this workbook manually. It is kept separate from the
 # final output so rerunning the script never overwrites the adjudications.
-adjudicator_name <- "DRG"
-reviewer3_file <- file.path(
-  output_data,
-  "abstract_screening/abstract_screening_reviewer3.xlsx"
-)
+reviewer3_file <- file.path(output_data, "abstract_screening/abstract_screening_reviewer3.xlsx")
+
+# 2. Read and standardise completed files -------------------------------------
+
+# 2.1. Locate the completed workbooks ----------------------------------------
+
+# Find completed reviewer workbooks and ignore Excel lock files.
+files <- list.files(folder_path, pattern = "\\.xlsx?$", full.names = TRUE, ignore.case = TRUE)
+files <- files[!str_starts(basename(files), fixed("~$"))]
+
+if (length(files) == 0) {
+  stop("No Excel files found in: ", folder_path)
+}
+
+# 2.2. Standardise workbook headers ------------------------------------------
+
+# Normalise column names so variations in the reviewer templates map to the same fields.
+clean_names <- function(x) {
+  x %>%
+    str_replace_all("\\s+", " ") %>%
+    str_trim()
+}
+
+# 2.3. Protect and read the manual adjudications -----------------------------
 
 # A manual input must never share a path with a generated output.
 generated_screening_files <- file.path(output_dir, c(
@@ -69,55 +73,7 @@ adjudication_columns <- c(
 reviewer3_control_column <- "apply_reviewer3"
 
 
-# 2. Read and standardise completed files -------------------------------------
-
-files <- list.files(
-  folder_path,
-  pattern = "\\.xlsx?$",
-  full.names = TRUE,
-  ignore.case = TRUE
-)
-files <- files[!str_starts(basename(files), fixed("~$"))]
-
-if (length(files) == 0) {
-  stop("No Excel files found in: ", folder_path)
-}
-
-clean_names <- function(x) {
-  x %>%
-    str_replace_all("\\s+", " ") %>%
-    str_trim()
-}
-
-# Standardise reviewer answers before comparing them. Slash-separated multiple
-# selections are sorted so that different ordering does not create a false
-# disagreement.
-normalise_for_comparison <- function(x) {
-  map_chr(x, function(value) {
-    if (is.na(value) || str_squish(value) == "") {
-      return(NA_character_)
-    }
-
-    value %>%
-      str_split("\\s*/\\s*") %>%
-      unlist() %>%
-      str_squish() %>%
-      str_to_lower() %>%
-      unique() %>%
-      sort() %>%
-      paste(collapse = " / ")
-  })
-}
-
-has_disagreement <- function(value_1, value_2, reviewer_2) {
-  value_1_clean <- normalise_for_comparison(value_1) %>%
-    replace_na("<missing>")
-  value_2_clean <- normalise_for_comparison(value_2) %>%
-    replace_na("<missing>")
-
-  !is.na(reviewer_2) & value_1_clean != value_2_clean
-}
-
+# Standardise blank cells before reading manual adjudications.
 clean_manual_value <- function(x) {
   x %>%
     as.character() %>%
@@ -126,14 +82,13 @@ clean_manual_value <- function(x) {
     na_if("")
 }
 
+# Read saved adjudications when a manual workbook already exists.
 if (file.exists(reviewer3_file)) {
+  # Look for the editable screening sheet before reading any decisions.
   reviewer3_sheets <- excel_sheets(reviewer3_file)
 
   if (!"final_screening" %in% reviewer3_sheets) {
-    stop(
-      basename(reviewer3_file),
-      " must contain a worksheet named final_screening."
-    )
+    stop(basename(reviewer3_file), " must contain a worksheet named final_screening.")
   }
 
   adjudication_decisions <- read_excel(
@@ -145,10 +100,8 @@ if (file.exists(reviewer3_file)) {
     names(adjudication_decisions)
   )
 
-  missing_adjudication_columns <- setdiff(
-    adjudication_columns,
-    names(adjudication_decisions)
-  )
+  # Check that the sheet has the fields needed to apply Reviewer 3's entries.
+  missing_adjudication_columns <- setdiff(adjudication_columns, names(adjudication_decisions))
 
   if (length(missing_adjudication_columns) > 0) {
     stop(
@@ -157,6 +110,7 @@ if (file.exists(reviewer3_file)) {
     )
   }
 
+  # Keep older workbooks usable when the optional manual review flag is absent.
   if (!reviewer3_control_column %in% names(adjudication_decisions)) {
     adjudication_decisions[[reviewer3_control_column]] <-
       rep("FALSE", nrow(adjudication_decisions))
@@ -167,6 +121,7 @@ if (file.exists(reviewer3_file)) {
     mutate(across(everything(), clean_manual_value)) %>%
     mutate(apply_reviewer3 = str_to_upper(apply_reviewer3))
 
+  # Check the manual review flag before converting it to a logical value.
   invalid_review_controls <- adjudication_decisions %>%
     filter(!is.na(apply_reviewer3), !apply_reviewer3 %in% c("TRUE", "FALSE"))
   if (nrow(invalid_review_controls) > 0) {
@@ -176,19 +131,15 @@ if (file.exists(reviewer3_file)) {
 
   adjudication_decisions <- adjudication_decisions %>%
     mutate(apply_reviewer3 = coalesce(apply_reviewer3 == "TRUE", FALSE)) %>%
-    filter(
-      apply_reviewer3 | if_any(all_of(setdiff(adjudication_columns, "paperID")),
-                              ~ !is.na(.x))
-    )
+    filter(apply_reviewer3 | if_any(all_of(setdiff(adjudication_columns, "paperID")), ~ !is.na(.x)))
 
+  # Require each saved adjudication to identify a single paper.
   duplicated_adjudication_ids <- adjudication_decisions %>%
     count(paperID, name = "n_rows") %>%
     filter(is.na(paperID) | n_rows > 1)
 
   if (nrow(duplicated_adjudication_ids) > 0) {
-    stop(
-      "Reviewer 3 adjudications must have one non-missing row per Paper ID."
-    )
+    stop("Reviewer 3 adjudications must have one non-missing row per Paper ID.")
   }
 } else {
   adjudication_decisions <- tibble(
@@ -204,12 +155,16 @@ if (file.exists(reviewer3_file)) {
   )
 }
 
+# 2.4. Read initial reviewer evaluations -------------------------------------
+
+# Read and standardise one initial reviewer workbook at a time.
 read_completed_file <- function(file) {
   required_cols <- c("paperID", "rev1_name", "TA_decisionRev1")
 
   # Some completed workbooks have Criteria as their first worksheet. Find the
   # screening sheet from its column names instead of relying on sheet order.
   sheet_names <- excel_sheets(file)
+  # Find the data sheet by its required columns instead of assuming a sheet name.
   data_sheet <- keep(sheet_names, function(sheet) {
     header <- read_excel(file, sheet = sheet, n_max = 0)
     names(header) <- clean_names(names(header))
@@ -217,10 +172,7 @@ read_completed_file <- function(file) {
   })
 
   if (length(data_sheet) != 1) {
-    stop(
-      "Expected one screening worksheet in ", basename(file),
-      "; found ", length(data_sheet), "."
-    )
+    stop("Expected one screening worksheet in ", basename(file), "; found ", length(data_sheet), ".")
   }
 
   dat <- read_excel(file, sheet = data_sheet[[1]])
@@ -229,10 +181,7 @@ read_completed_file <- function(file) {
   missing_cols <- setdiff(required_cols, names(dat))
 
   if (length(missing_cols) > 0) {
-    stop(
-      "Missing required column(s) in ", basename(file), ": ",
-      paste(missing_cols, collapse = ", ")
-    )
+    stop("Missing required column(s) in ", basename(file), ": ", paste(missing_cols, collapse = ", "))
   }
 
   dat %>%
@@ -250,8 +199,11 @@ read_completed_file <- function(file) {
     )
 }
 
+# Stack the completed files with one row per submitted evaluation.
 all_reviews <- map_dfr(files, read_completed_file) %>%
   filter(!is.na(paperID), paperID != "")
+
+# 2.5. Check repeated evaluations --------------------------------------------
 
 # Protect against an accidental duplicate copy of the same review.
 duplicate_review_rows <- all_reviews %>%
@@ -265,6 +217,7 @@ if (nrow(duplicate_review_rows) > 0) {
   )
 }
 
+# Keep one evaluation per paper and reviewer before computing agreement.
 reviews <- all_reviews %>%
   arrange(paperID, rev1_name, source_file) %>%
   distinct(paperID, rev1_name, .keep_all = TRUE)
@@ -272,14 +225,25 @@ reviews <- all_reviews %>%
 
 # 3. Screening totals ---------------------------------------------------------
 
+# 3.1. Count initial review decisions ----------------------------------------
+
+# Count the decisions recorded by the initial reviewers.
 decision_counts <- reviews %>%
   mutate(decision = replace_na(decision, "Missing")) %>%
   count(decision, name = "n_reviews") %>%
-  complete(
-    decision = c("Accepted", "Rejected", "Missing"),
-    fill = list(n_reviews = 0)
-  )
+  complete(decision = c("Accepted", "Rejected", "Missing"), fill = list(n_reviews = 0))
 
+# 3.2. Assign an initial status to each paper --------------------------------
+
+# During title/abstract screening, retaining a paper accepted by either reviewer
+# is the conservative option. Disagreements are still exported for resolution.
+# Change to "agreement_only" if only unanimously accepted papers should proceed.
+resolution_policy <- "include_if_any_accept"
+if (!resolution_policy %in% c("include_if_any_accept", "agreement_only")) {
+  stop("Unknown resolution_policy: ", resolution_policy)
+}
+
+# Summarise the initial evaluations into one status per paper.
 paper_summary <- reviews %>%
   group_by(paperID) %>%
   summarise(
@@ -311,6 +275,7 @@ paper_summary <- reviews %>%
     }
   )
 
+# Count unique papers by their initial screening status.
 paper_status_counts <- paper_summary %>%
   count(agreement_status, name = "n_papers") %>%
   complete(
@@ -320,6 +285,9 @@ paper_status_counts <- paper_summary %>%
     fill = list(n_papers = 0)
   )
 
+# 3.3. Calculate provisional screening totals --------------------------------
+
+# Record the screening totals before applying the final adjudications.
 overall_summary <- tibble(
   metric = c(
     "Files processed",
@@ -346,12 +314,19 @@ overall_summary <- tibble(
 
 # 4. Reviewer agreement -------------------------------------------------------
 
-overlap_reviews <- reviews %>%
-  semi_join(
-    paper_summary %>% filter(n_reviewers > 1),
-    by = "paperID"
-  )
+# 4.1. Count agreement between reviewer pairs --------------------------------
 
+# relationship in reviewer_pairs requires dplyr 1.1.1 or later.
+if (packageVersion("dplyr") < "1.1.1") {
+  stop("Please install dplyr 1.1.1 or later.")
+}
+
+
+# Keep the papers with overlapping initial reviews for the agreement analysis.
+overlap_reviews <- reviews %>%
+  semi_join(paper_summary %>% filter(n_reviewers > 1), by = "paperID")
+
+# Pair the reviewers on each shared paper so agreement can be counted by pair.
 reviewer_pairs <- overlap_reviews %>%
   select(paperID, rev1_name, decision) %>%
   inner_join(
@@ -369,6 +344,7 @@ reviewer_pairs <- overlap_reviews %>%
       decision_1 == decision_2
   )
 
+# Calculate agreement among paired evaluations where both decisions are present.
 pairwise_agreement <- reviewer_pairs %>%
   dplyr::group_by(pair, rev1_name_1, rev1_name_2) %>%
   dplyr::summarise(
@@ -378,13 +354,12 @@ pairwise_agreement <- reviewer_pairs %>%
     .groups = "drop"
   ) %>%
   dplyr::mutate(
-    percent_agreement = dplyr::if_else(
-      n_complete > 0,
-      round(100 * n_agree / n_complete, 1),
-      NA_real_
-    )
+    percent_agreement = dplyr::if_else(n_complete > 0, round(100 * n_agree / n_complete, 1), NA_real_)
   )
 
+# 4.2. List papers with decision disagreements -------------------------------
+
+# Keep the initial evaluations for papers with a decision disagreement.
 disagreement_details <- overlap_reviews %>%
   semi_join(
     paper_summary %>% filter(agreement_status == "Disagreement"),
@@ -399,6 +374,8 @@ disagreement_details <- overlap_reviews %>%
 
 # 5. Create adjudication and final screening dataset --------------------------
 
+# 5.1. Check reviewer counts and manual decisions ----------------------------
+
 if (any(paper_summary$n_reviewers > 2)) {
   stop(
     "At least one paper has more than two initial reviewers. ",
@@ -406,12 +383,10 @@ if (any(paper_summary$n_reviewers > 2)) {
   )
 }
 
+# Check that saved Reviewer 3 decisions use the same outcome labels as the initial reviews.
 valid_adjudication_decisions <- c("Accepted", "Rejected")
 invalid_adjudication_decisions <- adjudication_decisions %>%
-  filter(
-    !is.na(decision_reviewer_3),
-    !decision_reviewer_3 %in% valid_adjudication_decisions
-  )
+  filter(!is.na(decision_reviewer_3), !decision_reviewer_3 %in% valid_adjudication_decisions)
 
 if (nrow(invalid_adjudication_decisions) > 0) {
   stop(
@@ -421,6 +396,39 @@ if (nrow(invalid_adjudication_decisions) > 0) {
   )
 }
 
+# 5.2. Align reviewer values and flag disputed fields ------------------------
+
+# Standardise reviewer answers before comparing them. Slash-separated multiple
+# selections are sorted so that different ordering does not create a false
+# disagreement.
+normalise_for_comparison <- function(x) {
+  map_chr(x, function(value) {
+    if (is.na(value) || str_squish(value) == "") {
+      return(NA_character_)
+    }
+
+    value %>%
+      str_split("\\s*/\\s*") %>%
+      unlist() %>%
+      str_squish() %>%
+      str_to_lower() %>%
+      unique() %>%
+      sort() %>%
+      paste(collapse = " / ")
+  })
+}
+
+# Compare the two reviewer values only when a second reviewer exists.
+has_disagreement <- function(value_1, value_2, reviewer_2) {
+  value_1_clean <- normalise_for_comparison(value_1) %>%
+    replace_na("<missing>")
+  value_2_clean <- normalise_for_comparison(value_2) %>%
+    replace_na("<missing>")
+
+  !is.na(reviewer_2) & value_1_clean != value_2_clean
+}
+
+# Place the initial evaluations side by side, using one row per paper.
 reviewer_slots <- reviews %>%
   tibble::as_tibble() %>%
   dplyr::transmute(
@@ -440,10 +448,7 @@ reviewer_slots <- reviews %>%
   tidyr::pivot_wider(
     id_cols = paperID,
     names_from = reviewer_number,
-    values_from = c(
-      reviewer_name, decision, TA_exclCriteria, notes,
-      Topic, TaxaGroup, fishingGear
-    ),
+    values_from = c(reviewer_name, decision, TA_exclCriteria, notes, Topic, TaxaGroup, fishingGear),
     names_glue = "{.value}_{reviewer_number}"
   )
 
@@ -499,6 +504,9 @@ reviewer_slots <- reviewer_slots %>%
       disagreement_fishingGear
   )
 
+# 5.3. Identify papers requiring adjudication --------------------------------
+
+# Collect the paper IDs that require Reviewer 3 input.
 required_adjudication_ids <- union(
   paper_summary$paperID[paper_summary$agreement_status %in%
                          c("Disagreement", "Incomplete")],
@@ -509,15 +517,13 @@ required_adjudication_ids <- union(
 additional_review_ids <- adjudication_decisions %>%
   filter(apply_reviewer3) %>%
   pull(paperID)
+# Collect the paper IDs that require Reviewer 3 input.
 required_adjudication_ids <- union(
   required_adjudication_ids,
   intersect(additional_review_ids, paper_summary$paperID)
 )
 
-unknown_adjudication_ids <- setdiff(
-  adjudication_decisions$paperID,
-  required_adjudication_ids
-)
+unknown_adjudication_ids <- setdiff(adjudication_decisions$paperID, required_adjudication_ids)
 
 # Keep historical adjudications even if reviewers subsequently agree.
 # They apply only when currently required or explicitly enabled by the user.
@@ -528,10 +534,7 @@ if (length(unknown_adjudication_ids) > 0) {
   )
 }
 
-missing_adjudication_ids <- setdiff(
-  required_adjudication_ids,
-  adjudication_decisions$paperID
-)
+missing_adjudication_ids <- setdiff(required_adjudication_ids, adjudication_decisions$paperID)
 
 if (length(missing_adjudication_ids) > 0) {
   warning(
@@ -540,25 +543,30 @@ if (length(missing_adjudication_ids) > 0) {
   )
 }
 
+# 5.4. Apply adjudications and build the final screening table ---------------
+
+# Use this name when adjudication is required and no reviewer name was supplied.
+adjudicator_name <- "DRG"
+
+# Keep the bibliographic fields that accompany the final decision.
 metadata_cols <- c(
   "paperID", "authors", "year", "journal", "volume", "issue",
   "start_page", "end_page", "doi", "Language", "document_type", "source",
   "title", "abstract", "keywords"
 )
 
+# Take one bibliographic record per paper before joining the reviewer values.
 paper_metadata <- reviews %>%
   select(any_of(metadata_cols)) %>%
   distinct(paperID, .keep_all = TRUE)
 
+# Join bibliographic details, initial evaluations and saved adjudications by paperID.
 final_screening <- paper_metadata %>%
   left_join(reviewer_slots, by = "paperID") %>%
-  left_join(
-    paper_summary %>%
-      select(paperID, n_reviewers, agreement_status),
-    by = "paperID"
-  ) %>%
+  left_join(paper_summary %>% select(paperID, n_reviewers, agreement_status), by = "paperID") %>%
   left_join(adjudication_decisions, by = "paperID") %>%
   mutate(
+    # Combine the explicit manual review flag with initial screening issues.
     apply_reviewer3 = coalesce(apply_reviewer3, FALSE),
     requires_adjudication = agreement_status %in% c("Disagreement", "Incomplete") |
       disagreement_any_variable | apply_reviewer3,
@@ -571,56 +579,33 @@ final_screening <- paper_metadata %>%
     )
   ) %>%
   mutate(
-    reviewer_3 = if_else(
-      requires_adjudication,
-      coalesce(reviewer_3, adjudicator_name),
-      NA_character_
-    ),
-    decision_reviewer_3 = if_else(
-      requires_adjudication,
-      decision_reviewer_3,
-      NA_character_
-    ),
+    # Expose Reviewer 3 values only for papers where adjudication applies.
+    reviewer_3 = if_else(requires_adjudication, coalesce(reviewer_3, adjudicator_name), NA_character_),
+    decision_reviewer_3 = if_else(requires_adjudication, decision_reviewer_3, NA_character_),
     TA_exclCriteria_reviewer_3 = if_else(
       requires_adjudication,
       TA_exclCriteria_reviewer_3,
       NA_character_
     ),
-    Topic_reviewer_3 = if_else(
-      requires_adjudication,
-      Topic_reviewer_3,
-      NA_character_
-    ),
-    TaxaGroup_reviewer_3 = if_else(
-      requires_adjudication,
-      TaxaGroup_reviewer_3,
-      NA_character_
-    ),
-    fishingGear_reviewer_3 = if_else(
-      requires_adjudication,
-      fishingGear_reviewer_3,
-      NA_character_
-    ),
-    notes_reviewer_3 = if_else(
-      requires_adjudication,
-      notes_reviewer_3,
-      NA_character_
-    ),
+    Topic_reviewer_3 = if_else(requires_adjudication, Topic_reviewer_3, NA_character_),
+    TaxaGroup_reviewer_3 = if_else(requires_adjudication, TaxaGroup_reviewer_3, NA_character_),
+    fishingGear_reviewer_3 = if_else(requires_adjudication, fishingGear_reviewer_3, NA_character_),
+    notes_reviewer_3 = if_else(requires_adjudication, notes_reviewer_3, NA_character_),
+    # Choose the final decision from Reviewer 3 when supplied, otherwise use the initial screening status.
     final_decision = case_when(
       !is.na(decision_reviewer_3) ~ decision_reviewer_3,
       agreement_status == "Accepted" ~ "Accepted",
       agreement_status == "Rejected" ~ "Rejected",
       TRUE ~ NA_character_
     ),
+    # Clear the exclusion criterion when the final decision is Accepted.
     TA_exclCriteria_final = case_when(
       final_decision == "Accepted" ~ NA_character_,
       !is.na(TA_exclCriteria_reviewer_3) ~ TA_exclCriteria_reviewer_3,
-      !disagreement_TA_exclCriteria ~ coalesce(
-        TA_exclCriteria_reviewer_1,
-        TA_exclCriteria_reviewer_2
-      ),
+      !disagreement_TA_exclCriteria ~ coalesce(TA_exclCriteria_reviewer_1, TA_exclCriteria_reviewer_2),
       TRUE ~ NA_character_
     ),
+    # Keep the classification fields for papers that are not rejected.
     Topic_final = case_when(
       final_decision == "Rejected" ~ NA_character_,
       !is.na(Topic_reviewer_3) ~ Topic_reviewer_3,
@@ -630,24 +615,19 @@ final_screening <- paper_metadata %>%
     TaxaGroup_final = case_when(
       final_decision == "Rejected" ~ NA_character_,
       !is.na(TaxaGroup_reviewer_3) ~ TaxaGroup_reviewer_3,
-      !disagreement_TaxaGroup ~ coalesce(
-        TaxaGroup_reviewer_1,
-        TaxaGroup_reviewer_2
-      ),
+      !disagreement_TaxaGroup ~ coalesce(TaxaGroup_reviewer_1, TaxaGroup_reviewer_2),
       TRUE ~ NA_character_
     ),
     fishingGear_final = case_when(
       final_decision == "Rejected" ~ NA_character_,
       !is.na(fishingGear_reviewer_3) ~ fishingGear_reviewer_3,
-      !disagreement_fishingGear ~ coalesce(
-        fishingGear_reviewer_1,
-        fishingGear_reviewer_2
-      ),
+      !disagreement_fishingGear ~ coalesce(fishingGear_reviewer_1, fishingGear_reviewer_2),
       TRUE ~ NA_character_
     ),
     proceeds_to_next_phase = final_decision == "Accepted"
   ) %>%
   mutate(
+    # Check whether the required decision and disputed fields are still unresolved.
     pending_decision = (agreement_status %in% c("Disagreement", "Incomplete") |
       apply_reviewer3) &
       is.na(decision_reviewer_3),
@@ -667,6 +647,7 @@ final_screening <- paper_metadata %>%
         pending_fishingGear ~ "Pending variables",
       TRUE ~ "Resolved"
     ),
+    # List the unresolved fields so Reviewer 3 can see what to fill in.
     pending_fields = pmap_chr(
       list(pending_decision, pending_TA_exclCriteria, pending_Topic,
            pending_TaxaGroup, pending_fishingGear),
@@ -699,12 +680,12 @@ final_screening <- paper_metadata %>%
   ) %>%
   arrange(suppressWarnings(as.numeric(paperID)), paperID)
 
+# 5.5. List unresolved decisions and disputed fields -------------------------
+
 # Pending decisions are expected while Reviewer 3 is still working.
 # Export them rather than stopping before the updated workbook is created.
 unresolved_decision_ids <- final_screening %>%
-  filter(
-    pending_decision
-  ) %>%
+  filter(pending_decision) %>%
   pull(paperID)
 
 if (length(unresolved_decision_ids) > 0) {
@@ -714,6 +695,7 @@ if (length(unresolved_decision_ids) > 0) {
   )
 }
 
+# Export papers that still need a decision or a disputed field resolved.
 adjudication_pending <- final_screening %>%
   filter(adjudication_status %in% c("Pending decision", "Pending variables"))
 
@@ -721,6 +703,8 @@ if (nrow(adjudication_pending) > 0) {
   warning("Adjudications still pending: ", nrow(adjudication_pending),
           ". See the adjudication_pending worksheet for pending fields.")
 }
+
+# 5.6. Update the screening totals after adjudication ------------------------
 
 # Replace the provisional policy count with the adjudicated result whenever a
 # reviewer 3 workbook is available.
@@ -733,6 +717,9 @@ overall_summary <- overall_summary %>%
     )
   )
 
+# 5.7. Collect the original and final values for disputes --------------------
+
+# Keep the original and final values for papers with disputed coding fields.
 variable_disagreements <- final_screening %>%
   filter(disagreement_any_variable) %>%
   select(
@@ -754,6 +741,16 @@ variable_disagreements <- final_screening %>%
 
 # 6. Figures ------------------------------------------------------------------
 
+# 6.1. Colours shared by the screening figures -------------------------------
+
+accepted_colour <- "seagreen3"
+rejected_colour <- "firebrick3"
+disagreement_colour <- "#E69F00"
+missing_colour <- "grey80"
+
+# 6.2. Screening overview ------------------------------------------------------
+
+# Show evaluation counts alongside unique paper counts in the overview.
 overview_plot_data <- bind_rows(
   overall_summary %>%
     filter(metric %in% c(
@@ -777,16 +774,11 @@ overview_plot_data <- bind_rows(
     )
   ))
 
+# Draw the overview as labelled tiles.
 p_overview <- ggplot(overview_plot_data, aes(x = metric, y = 1)) +
   geom_tile(aes(fill = metric), width = 0.94, height = 0.9) +
   geom_text(aes(label = value), size = 13, fontface = "bold", colour = "white") +
-  geom_text(
-    aes(label = metric),
-    y = 0.72,
-    size = 4,
-    fontface = "bold",
-    colour = "white"
-  ) +
+  geom_text(aes(label = metric), y = 0.72, size = 4, fontface = "bold", colour = "white") +
   scale_fill_manual(values = c(
     "Unique papers in current subset" = "#4D4D4D",
     "Accepted review decisions" = accepted_colour,
@@ -809,14 +801,11 @@ p_overview <- ggplot(overview_plot_data, aes(x = metric, y = 1)) +
 
 p_overview
 
-ggsave(
-  file.path(output_dir, "screening_overview.png"),
-  p_overview,
-  width = 11,
-  height = 4.5,
-  dpi = 300
-)
+ggsave(file.path(output_dir, "screening_overview.png"), p_overview, width = 11, height = 4.5, dpi = 300)
 
+# 6.3. Initial screening status ------------------------------------------------
+
+# Plot the number of unique papers in each initial screening status.
 p_status <- ggplot(
   paper_status_counts,
   aes(x = agreement_status, y = n_papers, fill = agreement_status)
@@ -829,11 +818,7 @@ p_status <- ggplot(
     "Disagreement" = disagreement_colour,
     "Incomplete" = missing_colour
   )) +
-  labs(
-    title = "Screening outcome by unique Paper ID",
-    x = NULL,
-    y = "Number of papers"
-  ) +
+  labs(title = "Screening outcome by unique Paper ID", x = NULL, y = "Number of papers") +
   theme_minimal(base_size = 13) +
   theme(
     panel.grid.major.x = element_blank(),
@@ -844,19 +829,13 @@ p_status <- ggplot(
 
 p_status
 
-ggsave(
-  file.path(output_dir, "unique_paper_outcomes.png"),
-  p_status,
-  width = 8,
-  height = 6,
-  dpi = 300
-)
+ggsave(file.path(output_dir, "unique_paper_outcomes.png"), p_status, width = 8, height = 6, dpi = 300)
 
+# 6.4. Initial decisions on disagreed papers -----------------------------------
+
+# Show the initial decisions for papers with a decision disagreement.
 disagreement_reviews <- reviews %>%
-  semi_join(
-    paper_summary %>% filter(agreement_status == "Disagreement"),
-    by = "paperID"
-  )
+  semi_join(paper_summary %>% filter(agreement_status == "Disagreement"), by = "paperID")
 
 if (nrow(disagreement_reviews) > 0) {
   disagreement_order <- paper_summary %>%
@@ -876,11 +855,7 @@ if (nrow(disagreement_reviews) > 0) {
       na.value = missing_colour,
       name = "Decision"
     ) +
-    labs(
-      title = "Reviewer decisions requiring adjudication",
-      x = NULL,
-      y = "Paper ID"
-    ) +
+    labs(title = "Reviewer decisions requiring adjudication", x = NULL, y = "Paper ID") +
     theme_minimal(base_size = 13) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1),
@@ -889,10 +864,8 @@ if (nrow(disagreement_reviews) > 0) {
       legend.position = "right"
     )
 
-  disagreement_height <- max(
-    6,
-    min(12, 2 + length(disagreement_order) * 0.30)
-  )
+  # Scale the plot height to the number of papers within the chosen limits.
+  disagreement_height <- max(6, min(12, 2 + length(disagreement_order) * 0.30))
 
   ggsave(
     file.path(output_dir, "overlap_decisions_by_reviewer.png"),
@@ -906,76 +879,70 @@ if (nrow(disagreement_reviews) > 0) {
 }
 
 
-# 7. Prepare the incremental Reviewer 3 workbook -----------------------------
-#
-# The manually edited reviewer3_file is NEVER overwritten. Each run produces
-# a separate, up-to-date workbook that can be checked before replacing it.
-# Existing adjudications are matched by paperID, not by row position.
-# Historical decisions remain visible even when the disagreement disappears.
+# 7. Prepare and export the incremental Reviewer 3 workbook ------------------
 
-reviewer3_updated_file <- file.path(
-  output_dir, "abstract_screening_reviewer3_updated.xlsx"
-)
+# 7.1. Carry forward current and historical adjudications --------------------
 
+# Write a separate workbook so the manually edited input stays intact.
+reviewer3_updated_file <- file.path(output_dir, "abstract_screening_reviewer3_updated.xlsx")
+
+# Match past adjudications by paperID and keep the current value when it exists.
 current_adjudications <- final_screening %>%
   left_join(adjudication_decisions %>% select(-apply_reviewer3),
             by = "paperID", suffix = c("", "_historical"))
 
-# Use an explicit column loop: no dynamic cur_column() inside pick().
 for (column in setdiff(adjudication_columns, "paperID")) {
-  current_adjudications[[column]] <- coalesce(
-    current_adjudications[[column]],
-    current_adjudications[[paste0(column, "_historical")]]
-  )
+  historical_column <- paste0(column, "_historical")
+  current_adjudications[[column]] <- coalesce(current_adjudications[[column]],
+                                             current_adjudications[[historical_column]])
 }
-current_adjudications <- current_adjudications %>%
-  select(-ends_with("_historical"))
 
-# Keep any older paper that is no longer in the current screening subset.
+# Drop the temporary columns once their values have been carried forward.
+current_adjudications <- current_adjudications %>% select(-ends_with("_historical"))
+
+# Retain past adjudications even when their papers are outside this run's subset.
 historical_adjudications <- adjudication_decisions %>%
   filter(!paperID %in% current_adjudications$paperID) %>%
   mutate(adjudication_status = "Historical - paper not in current subset")
 
-# Keep the same column structure when adding historical rows.
+# Add missing columns with matching types, including when there are no historical rows.
 for (column in setdiff(names(current_adjudications), names(historical_adjudications))) {
   historical_adjudications[[column]] <- rep(NA, nrow(historical_adjudications))
-  storage.mode(historical_adjudications[[column]]) <-
-    storage.mode(current_adjudications[[column]])
+  storage.mode(historical_adjudications[[column]]) <- storage.mode(current_adjudications[[column]])
 }
 
+# Combine both sets in the current column order and keep one row per paperID.
 reviewer3_updated <- bind_rows(
   current_adjudications,
   historical_adjudications %>% select(all_of(names(current_adjudications)))
-) %>%
-  arrange(suppressWarnings(as.numeric(paperID)), paperID)
-
-# One paper must appear only once in the editable sheet.
+) %>% arrange(suppressWarnings(as.numeric(paperID)), paperID)
 stopifnot(!anyDuplicated(reviewer3_updated$paperID))
 
+# 7.2. Record adjudication history and export the workbook -------------------
+
+# Record which saved adjudications still relate to a current paper or required review.
 adjudication_history <- adjudication_decisions %>%
   mutate(
     current_disagreement = paperID %in% required_adjudication_ids,
     in_current_subset = paperID %in% final_screening$paperID
   )
 
-write_xlsx(
-  list(
-    "final_screening" = reviewer3_updated,
-    "adjudication_pending" = adjudication_pending,
-    "variable_disagreements" = variable_disagreements,
-    "adjudication_history" = adjudication_history
-  ),
-  reviewer3_updated_file
-)
+# Export the editable sheet alongside pending items, variable disagreements and history.
+write_xlsx(list(
+  final_screening = reviewer3_updated,
+  adjudication_pending = adjudication_pending,
+  variable_disagreements = variable_disagreements,
+  adjudication_history = adjudication_history
+), reviewer3_updated_file)
 
-message(
-  "Reviewer 3 updated workbook saved at: ", reviewer3_updated_file, "\\n",
-  "The original Reviewer 3 workbook has not been modified."
-)
+message("Reviewer 3 updated workbook saved at: ", reviewer3_updated_file, "\\n",
+        "The original Reviewer 3 workbook has not been modified.")
 
+# 8. Export results -----------------------------------------------------------
 
-# 7. Export results -----------------------------------------------------------
+# 8.1. Create the manual workbook on the first run ---------------------------
 
+# Create the manual template on the first run only.
 if (!file.exists(reviewer3_file)) {
   write_xlsx(
     list(
@@ -991,6 +958,8 @@ if (!file.exists(reviewer3_file)) {
     "Complete it and rerun the script to apply the adjudications."
   )
 }
+
+# 8.2. Export the screening summary and agreement tables ---------------------
 
 write_xlsx(
   list(
@@ -1008,6 +977,8 @@ write_xlsx(
   ),
   file.path(output_dir, "abstract_screening_summary.xlsx")
 )
+
+# 8.3. Export final decisions for downstream screening -----------------------
 
 # Standalone adjudicated dataset for downstream screening. This never
 # overwrites abstract_screening_reviewer3.xlsx.
