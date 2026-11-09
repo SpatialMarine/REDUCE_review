@@ -99,7 +99,7 @@ for counting rules, denominators, missing-field applicability and limitations.
 
 ### Study area tracer
 
-Use the [study area tracer](docs/study-area-tracer/) to draw or revise a study-area outline from a PDF map in your browser.
+[Open Study Area Tracer](https://spatialmarine.github.io/REDUCE_review/study-area-tracer/) to draw or revise a study-area outline from a PDF map. Select a page, crop the map, and trace the boundary or load a saved outline to edit it. The tool runs in your browser. PDFs and trace files stay on your device.
 
 To run it locally on Windows, double-click `docs/study-area-tracer/start-local.cmd`. On other platforms, run `python3 docs/study-area-tracer/serve.py` from the repository root. Keep the launcher window open while you work.
 
