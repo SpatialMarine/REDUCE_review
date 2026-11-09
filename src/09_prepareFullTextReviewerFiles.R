@@ -8,13 +8,13 @@
 
 library(readxl)
 library(dplyr)
-library(openxlsx)
 
 # 1. Input and output paths -----------------------------------------------------
 
 # 1.1. Read the assignment workbook from script 08 -----------------------------
 
 assignment_file <- file.path(output_data, "full_text_screening", "split_fullText_screening.xlsx")
+template_file <- file.path(input_data, "REDUCE_extraction_template.xlsx")
 reviewer_dir <- file.path(output_data, "full_text_screening", "by_reviewer")
 
 # 2. Prepare the articles and reviewer codes -----------------------------------
@@ -56,77 +56,102 @@ papers$doi <- ifelse(!is.na(doi) & nzchar(doi), paste0("https://doi.org/", doi),
 
 # 3. Build and export one workbook per reviewer --------------------------------
 
-# 3.1. Define the options for the three dropdown columns ------------------------
+# 3.1. Read the template headers and check the export paths ---------------------
 
-dropdown_options <- list(
-  rev1_name = c("ABC", "AEP", "BB", "CL", "CS", "DFF", "DK", "DM", "DRG", "EM", "GA",
-                "ISM", "JB", "JCB", "JOB", "LNH", "MC", "NPS", "PGU", "TM"),
-  FT_decisionRev1 = c("Accepted", "Rejected"),
-  FT_exclCriteria_rev1 = c("LANGUAGE", "DOCUMENT", "NOTOPIC", "LOCATION", "GEAR", "TAXA", "STUDY_TYPE")
-)
-files <- file.path(reviewer_dir, paste0("full_text_", reviewer_codes[assigned_reviewers], ".xlsx"))
+# Locate the prefilled fields by name in the second header row.
+template_columns <- names(read_excel(template_file, sheet = "dataExtraction", skip = 1, n_max = 0))
+export_columns <- match(c(paper_columns, "rev1_name"), template_columns)
+stopifnot(!anyNA(export_columns), identical(excel_sheets(template_file)[2], "dataExtraction"))
 
 # Check all paths before writing so a rerun cannot overwrite completed reviews.
+files <- file.path(reviewer_dir, paste0("full_text_", reviewer_codes[assigned_reviewers], ".xlsx"))
 if (any(file.exists(files))) {
   stop("Reviewer workbooks already exist: ", paste(basename(files[file.exists(files)]), collapse = ", "))
 }
 dir.create(reviewer_dir, recursive = TRUE, showWarnings = FALSE)
 
-# 3.2. Write the assigned papers, DOI links and per-row dropdowns ---------------
+# Unpack the template once. Rewriting only its data sheet preserves drawings and Excel validations.
+template_dir <- tempfile("reviewer_template_")
+template_parts <- unzip(template_file, list = TRUE)$Name
+unzip(template_file, exdir = template_dir)
+sheet_file <- file.path(template_dir, "xl", "worksheets", "sheet2.xml")
+sheet_xml <- paste(readLines(sheet_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+# Keep the existing headings and insert rows before the end of the worksheet data.
+rows_end <- regexpr("</sheetData>", sheet_xml, fixed = TRUE)[1]
+stopifnot(rows_end > 0L, !grepl('<row r="([3-9]|[0-9]{2,})"', sheet_xml))
+sheet_top <- substr(sheet_xml, 1L, rows_end - 1L)
+sheet_bottom <- substring(sheet_xml, rows_end)
+
+# 3.2. Fill the template with each reviewer's assigned papers -------------------
+
+# Escape text for Excel's XML, preserving Unicode and line breaks in abstracts.
+escape_xml <- function(text) {
+  # Excel's XML cannot store control characters other than tabs and line breaks.
+  text <- gsub("[\\x01-\\x08\\x0B\\x0C\\x0E-\\x1F]", "", enc2utf8(text), perl = TRUE)
+  text <- gsub("&", "&amp;", enc2utf8(text), fixed = TRUE)
+  text <- gsub("<", "&lt;", text, fixed = TRUE)
+  gsub(">", "&gt;", text, fixed = TRUE)
+}
+
+# Keep the column references in worksheet order for every article.
+columns <- order(export_columns)
+excel_columns <- openxlsx::int2col(export_columns)
+last_column <- openxlsx::int2col(length(template_columns))
 
 for (i in seq_along(assigned_reviewers)) {
   reviewer <- assigned_reviewers[i]
   code <- unname(reviewer_codes[reviewer])
 
-  # Both assignment roles enter the same sheet, with one row per assigned paper.
+  # Keep one initial row per assigned paper, including both assignment roles.
   screening <- papers %>%
     filter(full_text_reviewer_1 == reviewer | full_text_reviewer_2 == reviewer) %>%
     select(all_of(paper_columns)) %>%
-    mutate(rev_AI = NA_character_, FT_decisionAI = NA_character_, FT_exclCriteria_AI = NA_character_,
-           notes_AI = NA_character_, rev1_name = code, FT_decisionRev1 = NA_character_, FT_exclCriteria_rev1 = NA_character_,
-           notes = NA_character_)
+    mutate(rev1_name = code)
 
-  # Write the screening sheet first and keep the column headings visible.
-  workbook <- createWorkbook()
-  addWorksheet(workbook, "Full_text_screening")
-  writeData(workbook, "Full_text_screening", screening, withFilter = TRUE)
-  freezePane(workbook, "Full_text_screening", firstRow = TRUE)
+  # Keep rows within the template's filter and validation ranges.
+  stopifnot(nrow(screening) <= 10000L)
 
-  # Write DOI values as native Excel hyperlinks, leaving missing cells blank.
-  for (row in which(!is.na(screening$doi))) {
-    link <- structure(screening$doi[row], class = "hyperlink")
-    writeData(workbook, "Full_text_screening", link, startCol = match("doi", names(screening)),
-              startRow = row + 1L, colNames = FALSE)
-  }
+  # Write only populated fields, ordered by their position in the template.
+  rows <- character(nrow(screening))
+  for (row in seq_len(nrow(screening))) {
+    excel_row <- row + 2L
+    cells <- character(length(columns))
+    for (j in columns) {
+      # Leave missing values and all review and extraction fields empty.
+      value <- screening[[j]][row]
+      if (is.na(value)) next
 
-  # Name each range so Excel can use options stored on a different worksheet.
-  addWorksheet(workbook, "dropdown")
-  writeData(workbook, "dropdown", t(names(dropdown_options)), colNames = FALSE)
-  for (column in seq_along(dropdown_options)) {
-    field <- names(dropdown_options)[column]
-    options <- dropdown_options[[column]]
-    writeData(workbook, "dropdown", options, startCol = column, startRow = 2, colNames = FALSE)
-    createNamedRegion(workbook, "dropdown", cols = column, rows = seq_along(options) + 1L, name = field)
-
-    # Reuse the human decision and exclusion lists for the corresponding AI columns.
-    fields <- switch(field,
-      FT_decisionRev1 = c(field, "FT_decisionAI"),
-      FT_exclCriteria_rev1 = c(field, "FT_exclCriteria_AI"),
-      field
-    )
-
-    # Apply each list to all article rows in the matching column.
-    for (review_field in fields) {
-      dataValidation(workbook, "Full_text_screening", cols = match(review_field, names(screening)),
-                     rows = seq_len(nrow(screening)) + 1L, type = "list", value = field,
-                     allowBlank = TRUE, showErrorMsg = TRUE)
+      # Use a clickable Excel formula for DOI and preserve the year as a number.
+      ref <- paste0(excel_columns[j], excel_row)
+      if (names(screening)[j] == "doi") {
+        link <- escape_xml(value)
+        formula <- paste0('HYPERLINK("', gsub('"', '""', link, fixed = TRUE), '")')
+        cells[j] <- paste0('<c r="', ref, '" t="str"><f>', formula, '</f><v>', link, '</v></c>')
+      } else if (is.numeric(value)) {
+        cells[j] <- paste0('<c r="', ref, '"><v>', value, '</v></c>')
+      } else {
+        cells[j] <- paste0('<c r="', ref, '" t="inlineStr"><is><t xml:space="preserve">',
+                           escape_xml(as.character(value)), '</t></is></c>')
+      }
     }
+
+    # Append the populated cells as a single row without modifying the template headers.
+    rows[row] <- paste0('<row r="', excel_row, '">', paste0(cells[columns], collapse = ""), '</row>')
   }
 
-  # Give longer text fields room to read and save without replacing any workbook.
-  setColWidths(workbook, "Full_text_screening", cols = seq_len(ncol(screening)), widths = 22)
-  setColWidths(workbook, "Full_text_screening", cols = match(c("title", "abstract", "notes_AI", "notes"), names(screening)),
-               widths = 55)
-  setColWidths(workbook, "dropdown", cols = seq_along(dropdown_options), widths = 24)
-  saveWorkbook(workbook, files[i], overwrite = FALSE)
+  # Update the used range and package the untouched template parts with the filled sheet.
+  dimension <- paste0('<dimension ref="A1:', last_column)
+  top <- sub(paste0(dimension, '2"'), paste0(dimension, nrow(screening) + 2L, '"'), sheet_top, fixed = TRUE)
+  writeLines(enc2utf8(paste0(top, paste0(rows, collapse = ""), sheet_bottom)), sheet_file, useBytes = TRUE)
+  staged_file <- tempfile("reviewer_", fileext = ".xlsx")
+  zip::zipr(staged_file, template_parts[!endsWith(template_parts, "/")], root = template_dir, include_directories = FALSE, mode = "mirror")
+
+  # Publish the completed workbook only if the destination is still free.
+  saved <- file.copy(staged_file, files[i], overwrite = FALSE)
+  unlink(staged_file)
+  if (!saved) stop("Could not write reviewer workbook: ", files[i])
 }
+
+# Remove the unpacked working copy after all reviewer files have been written.
+unlink(template_dir, recursive = TRUE)

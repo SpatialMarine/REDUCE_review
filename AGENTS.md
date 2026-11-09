@@ -79,6 +79,15 @@ Apply **LANGUAGE → DOCUMENT → NOTOPIC → LOCATION → GEAR → TAXA → STU
 6. **TAXA.** Applies only to the megafauna catch pathway. Eligible groups are marine mammals, sea turtles, seabirds and chondrichthyans. A paper can still qualify through fishing effort, IUU fishing or ghost gear.
 7. **STUDY_TYPE.** Exclude non-empirical literature reviews, conceptual or perspective papers, protocol reviews and methods-only papers without an eligible empirical application. Meta-analyses can qualify if they meet the remaining criteria. A methods paper can qualify if it tests the method on an eligible case in the study area.
 
+### Store full-text PDFs and study-area polygons
+
+- Use the reviewer acronyms defined in `src/09_prepareFullTextReviewerFiles.R`. Within `output/full_text_screening/by_reviewer`, store PDFs in `Papers/<reviewer_code>/<topic>/` and polygon traces in `Polygons/<reviewer_code>/<topic>/`. Use the topic folder names `IUU`, `Megafauna catch`, `Fishing effort` and `Ghost gear`.
+- Name each PDF `FirstAuthor_JournalAbbrev_Year.pdf`. Use the first author's surname, the abbreviated journal name and the publication year. For reports, use the publisher or series abbreviation in place of the journal. Keep the source PDF in its original location and copy it to the assigned reviewer and topic folder with the standard name. If a paper is extracted for more than one topic, place a copy in each applicable topic folder.
+- Name each editable polygon trace `<paperID>_<PDF_stem>_Fig<NN>_trace.json`. For example, `1560_Fernandez_JNorthwAtlFishSci_2005_Fig01_trace.json` matches `Fernandez_JNorthwAtlFishSci_2005.pdf`. If a figure contains several outlines, add a panel or area identifier to distinguish them.
+- For a paper assigned to two reviewers, place a copy of the PDF in each reviewer's folder and keep their polygon files separate. Store each polygon in the topic folder for the result it represents. Keep the PDF filename recorded in each trace consistent with the PDF the reviewer opens in the web tool.
+- In `geometry_file`, record the path relative to the reviewer workbook, for example `Polygons/DRG/Megafauna catch/1560_Fernandez_JNorthwAtlFishSci_2005_Fig01_trace.json`. Record the figure or page and what the outline represents in `source_reference`. Flag approximate outlines and state what was used to draw them.
+- Once the trace has been saved, set `polygon_studyArea` to `Yes` and `geometry_checked` to `No` until the reviewer checks it in the web tool. After checking, the reviewer records whether they edited the trace and, if they did, whether they uploaded the edited file.
+
 ### Check before saving
 
 Confirm that each rejection uses the first supported code, each acceptance has a blank exclusion code and unresolved cases remain distinguishable in the notes. Check that only the approved review fields and paper IDs were edited. Report accepted, rejected and pending counts and list unresolved paper IDs.
