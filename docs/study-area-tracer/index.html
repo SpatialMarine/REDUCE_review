@@ -13,13 +13,14 @@
   <h1>Study area tracer</h1>
   <p class="intro">Trace a study-area boundary from a PDF map. Your files stay in this browser.</p>
   <ol id="steps" class="steps">
-    <li>Open PDF</li><li>Select map</li><li>Trace outline</li><li>Review and save</li>
+    <li>Open PDF</li><li>Select map</li><li>Trace outline</li><li>Calibrate and save</li>
   </ol>
   <section class="workspace" aria-labelledby="heading">
     <div class="guidance">
-      <h2 id="heading"></h2>
+      <h2 id="heading">Open the tracer from its local address</h2>
       <p id="instructions"></p>
-      <div id="file-tools" class="tools">
+      <p id="startup-help">If you opened <code>index.html</code> directly from disk, double-click <code>start-local.cmd</code> in the same folder instead. Keep its window open and use the browser tab at <code>http://127.0.0.1</code> that it opens. If you are already using a web address, reload the page.</p>
+      <div id="file-tools" class="tools" hidden>
         <label class="button primary">Choose PDF <input id="pdf" type="file" accept=".pdf,application/pdf"></label>
         <span id="filename">No PDF selected</span>
         <button id="previous" aria-label="Previous page">←</button>
@@ -31,7 +32,7 @@
       <div id="crop-tools" class="tools" hidden><button id="back-file">Change PDF or page</button></div>
       <div id="draw-tools" class="tools" hidden>
         <button id="back-page">Back to page</button>
-        <label class="button">Load reference JSON <input id="reference" type="file" accept=".json,application/json"></label>
+        <label class="button">Load reference JSON or GeoJSON <input id="reference" type="file" accept=".json,.geojson,application/json,application/geo+json"></label>
         <select id="reference-choice" aria-label="Saved outline" hidden></select>
         <button id="edit-reference" disabled>Edit this outline</button>
         <button id="add-point" aria-pressed="false" hidden>Add point</button>
@@ -41,8 +42,49 @@
       </div>
       <div id="review-tools" class="tools" hidden>
         <button id="edit">Back to editing</button>
-        <button class="primary" id="save">Download JSON</button>
+        <button id="save">Download editable JSON draft</button>
       </div>
+      <section id="calibration" aria-labelledby="calibration-heading" hidden>
+        <h3 id="calibration-heading">Georeference this outline</h3>
+        <p>Match known locations on the PDF to their coordinates. This lets the tracer place the orange outline on a map.</p>
+        <ol class="calibration-guide">
+          <li><strong>Place a point.</strong> Click <strong>Mark control on PDF</strong>, then click the exact crossing of two labelled grid lines. You can also use an identifiable location with coordinates from a reference map. A scale bar alone cannot locate the panel. If someone already saved the calibration, use <strong>Load calibration JSON or GeoJSON</strong> and start at step 4.</li>
+          <li><strong>Fill in the new row.</strong> Enter longitude first and latitude second, in WGS 84 decimal degrees. For example, 19° W and 21°30′ N are <strong>−19</strong> and <strong>21.5</strong>. West and south are negative. In <strong>Source / note</strong>, you can record the grid label or reference used.</li>
+          <li><strong>Choose Fit or Check.</strong> Repeat until you have at least three <strong>Fit</strong> points spread around the outline, with at least one off the line joining the others. These locate the outline. Add at least one different known location and select <strong>Check</strong> in its row. The tracer leaves it out of the fit and reports how far its predicted location is from the known location. Without a separate Check point, the downloads stay locked.</li>
+          <li><strong>Inspect and correct.</strong> Compare the markers and coordinates with the PDF or your reference. Use <strong>Move</strong> to click a marker's correct location, or edit its coordinates in the row. Read <strong>Error (km)</strong> for the Check rows. In the preview, look for orange sections beyond the dotted grey boundary, where the position is estimated beyond the Fit points.</li>
+          <li><strong>Complete the checklist below.</strong> Tick each item only after checking it. If you cannot verify the location or the errors are too large for the intended map, leave the review incomplete. Both downloads unlock when the review is complete.</li>
+        </ol>
+        <div class="tools">
+          <button id="add-control" aria-pressed="false">Mark control on PDF</button>
+          <label class="button">Load calibration JSON or GeoJSON <input id="load-calibration" type="file" accept=".json,.geojson,application/json,application/geo+json"></label>
+          <span id="control-instructions" role="status"></span>
+        </div>
+        <div class="control-table">
+          <table>
+            <thead><tr><th>Point</th><th>Longitude</th><th>Latitude</th><th>Use</th><th>Source / note</th><th>Error (km)</th><th>Actions</th></tr></thead>
+            <tbody id="control-rows"></tbody>
+          </table>
+        </div>
+        <label>Projection assumption <input id="calibration-note" type="text"></label>
+        <p id="calibration-result" role="status"></p>
+        <svg id="geo-preview" viewBox="0 0 400 240" role="img" aria-label="Geographic outline preview in longitude and latitude" hidden></svg>
+        <p id="geo-legend" hidden>Orange: current outline. Dashed blue: loaded calibration. Circles: fit controls. Squares: check controls. Preview in degrees.</p>
+        <fieldset id="geographic-review">
+          <legend>Reviewer checklist</legend>
+          <label>Reviewer name or ID <input id="reviewer" type="text"></label>
+          <label><input id="review-markers" type="checkbox" disabled> I compared the markers with the PDF and verified that the clicks, coordinates and east/west or north/south signs match the reference.</label>
+          <label><input id="review-checks" type="checkbox" disabled> I verified that the Check points are separate known locations from the Fit points.</label>
+          <label><input id="review-errors" type="checkbox" disabled> I read the Check errors in kilometres and consider them acceptable for the intended map.</label>
+          <label><input id="review-extent" type="checkbox" disabled> I inspected the preview and reviewed any part of the outline outside the dotted grey Fit boundary.</label>
+          <label><span id="review-note-label">Additional review note (optional)</span> <input id="review-note" type="text" placeholder="Example: compared the south end with the coastline"></label>
+          <p id="review-status" role="status"></p>
+        </fieldset>
+        <div class="tools">
+          <button id="save-calibration" disabled>Download calibration GeoJSON</button>
+          <button id="save-geojson" disabled>Download study-area GeoJSON</button>
+        </div>
+        <p><strong>Open in QGIS.</strong> Drag either <code>.geojson</code> into QGIS. The calibration file shows the control points and the study-area file shows the polygon. If needed, right-click a layer and choose <strong>Zoom to Layer</strong>. Compare the outline with an independent reference layer such as a coastline.</p>
+      </section>
       <div id="zoom-tools" class="tools" hidden>
         <label>Zoom <select id="zoom"><option value="1">Fit panel</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option></select></label>
         <span class="key"><i></i> New outline</span><span class="key blue"><i></i> Saved reference</span>
@@ -54,7 +96,7 @@
     </div>
     <div id="empty" class="empty"><strong>Open a PDF to start</strong><span>The map preview will appear here.</span></div>
   </section>
-  <p class="footnote">The JSON stores PDF page pixels. Geographic coordinates are assigned in a separate step.</p>
+  <p class="footnote">Both GeoJSON exports require geographic review and can be reopened in the tracer.</p>
 </main>
 </body>
 </html>

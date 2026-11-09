@@ -1,22 +1,35 @@
 import * as pdfjs from "./vendor/build/pdf.mjs";
 import { validRing } from "./geometry.mjs";
+import { createCalibration } from "./calibration-ui.mjs";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("./vendor/build/pdf.worker.mjs", import.meta.url).href;
 const $ = id => document.getElementById(id);
 const image = $("image"), overlay = $("overlay");
 const ink = overlay.getContext("2d");
 const previewDpi = 125, detailDpi = 600;
-let pdf, filename, page = 1, stage = 0, busy = false, crop, corner, points = [];
+let pdf, filename, fingerprint, page = 1, stage = 0, busy = false, crop, corner, points = [];
 let saved = [], selected = -1, reference = [];
-let version = 1;
+let traceVersion = 1;
 let editing = false, activeVertex = -1, insertPoint = false, drag = null, history = [];
+const pagePoint = ([x, y]) => [x + crop.x, y + crop.y].map(v => +v.toFixed(8));
+const outputStem = () => `${filename.replace(/\.pdf$/i, "")}_page${page}_panel_${crop.x}_${crop.y}_${crop.width}x${crop.height}`;
+const calibration = createCalibration({
+  dpi: detailDpi,
+  context: () => ({
+    filename, page, fingerprint, crop, vertices: crop ? points.map(pagePoint) : [],
+    stem: crop ? outputStem() : "",
+    metadata: {...saved[selected], pdf_file: filename, pdf_page: page}
+  }),
+  repaint: marks,
+  download
+});
 
-const headings = ["Choose the PDF and page", "Select the map panel", "Trace the outline", "Review and save"];
+const headings = ["Choose the PDF and page", "Select the map panel", "Trace the outline", "Calibrate and save"];
 const guidance = [
   "Choose a PDF. Use the arrows or the page number to find the map, then click Open page.",
   "Click two opposite corners around the map. Leave some space around its boundary.",
   "Click along the boundary in order. Use Undo point to correct the last click. Close the outline when finished.",
-  "Check the orange outline. Return to editing or download a new JSON. The saved coordinates refer to the PDF page."
+  "Check the orange outline. Complete the geographic review to export the calibration points and study area."
 ];
 
 function status(message = "", error = false) {
@@ -35,7 +48,8 @@ function showStep(next) {
   ["file", "crop", "draw", "review"].forEach((name, i) => $(name + "-tools").hidden = stage !== i);
   $("zoom-tools").hidden = stage < 2;
   updateEditor();
-  overlay.style.pointerEvents = stage === 1 || stage === 2 ? "auto" : "none";
+  $("calibration").hidden = stage !== 3;
+  overlay.style.pointerEvents = stage >= 1 ? "auto" : "none";
 }
 
 function fit(resetScroll = false) {
@@ -69,6 +83,7 @@ function marks() {
     ink.fillStyle = "#d74616";
     ink.fillRect(corner[0] - width, corner[1] - width, width * 2, width * 2);
   }
+  if (stage === 3) calibration.paint(ink, crop, width);
 }
 
 // Render the crop from the PDF, then use CSS zoom to inspect it without changing saved pixels.
@@ -102,6 +117,8 @@ function resetOutline() {
   $("reference").value = "";
   $("reference-choice").hidden = true;
   $("zoom").value = "1";
+  $("load-calibration").value = "";
+  calibration.load(null);
 }
 
 async function preview(n, nextStage) {
@@ -121,12 +138,15 @@ $("pdf").onchange = () => attempt(async () => {
   if (!file) return;
   status("Opening PDF locally…");
   const base = new URL("./vendor/", import.meta.url).href;
+  const data = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
   pdf = await pdfjs.getDocument({
-    data: await file.arrayBuffer(), cMapUrl: base + "cmaps/", cMapPacked: true,
+    data, cMapUrl: base + "cmaps/", cMapPacked: true,
     standardFontDataUrl: base + "standard_fonts/", wasmUrl: base + "wasm/"
   }).promise;
   filename = file.name;
-  version = 1;
+  traceVersion = 1;
   $("filename").textContent = filename;
   $("page").max = pdf.numPages;
   $("page-count").textContent = `of ${pdf.numPages}`;
@@ -161,6 +181,8 @@ overlay.onclick = event => attempt(async () => {
   } else if (stage === 2 && !editing) {
     remember();
     points.push(point); marks(); status(`${points.length} vertices marked.`);
+  } else if (stage === 3 && calibration.isPlacing()) {
+    calibration.place(pagePoint(point));
   }
 });
 
@@ -183,8 +205,9 @@ function showReference() {
 $("reference").onchange = () => attempt(async () => {
   const file = $("reference").files[0];
   if (!file) return;
-  const loaded = JSON.parse(await file.text());
-  if (!Array.isArray(loaded)) throw Error("Expected a REDUCE trace JSON containing an array of outlines.");
+  const data = JSON.parse(await file.text());
+  const loaded = data?.tracer_export === "study-area" ? data.features?.map(feature => feature.properties) : data;
+  if (!Array.isArray(loaded)) throw Error("Choose a REDUCE outline JSON or a study-area GeoJSON exported by this tracer.");
   const matching = loaded.map((record, i) => [record, i]).filter(([record]) => record?.pdf_page === page);
   if (!matching.length) throw Error(`The JSON has no saved outline for page ${page}.`);
   saved = loaded; selected = -1; reference = []; marks();
@@ -233,14 +256,15 @@ function remember() {
 }
 
 // Copy the saved ring without its duplicate closing vertex.
-$("edit-reference").onclick = () => {
+$("edit-reference").onclick = () => attempt(async () => {
   if (selected < 0 || (points.length && !window.confirm("Replace the current draft with the saved outline?"))) return;
+  calibration.load(saved[selected].calibration ?? null);
   points = reference.map(p => [...p]);
   if (points[0]?.every((v, i) => v === points.at(-1)[i])) points.pop();
   editing = true; history = []; activeVertex = -1;
   updateEditor(); marks();
   status("Blue: original outline. Orange: editable copy.");
-};
+});
 
 $("add-point").onclick = () => {
   insertPoint = !insertPoint;
@@ -323,29 +347,55 @@ $("close-outline").onclick = () => {
     status("Mark at least three distinct points and follow the boundary without crossing it.", true);
     return;
   }
-  showStep(3); marks(); status("Outline closed. Check it before downloading.");
+  showStep(3); calibration.refresh(); status("Outline closed. Check it before downloading.");
 };
-$("edit").onclick = () => { showStep(2); marks(); status(); };
+$("edit").onclick = () => { calibration.cancelPlacement(); showStep(2); marks(); status(); };
 
+// Save an editable image-space draft while keeping other outlines in the reference file.
 $("save").onclick = () => {
   const next = saved.slice();
-  const record = { ...(saved[selected] ?? {}) };
-  delete record.pdf_md5; // The browser export identifies the PDF by its filename.
+  const record = { ...saved[selected] };
+  delete record.pdf_md5;
+  delete record.calibration;
+  delete record.geographic_status;
   Object.assign(record, {
     pdf_file: filename, pdf_page: page, render_dpi: detailDpi, crop,
     coordinate_space: "PDF page pixels, top-left origin",
     status: "Digitised in image space; geographic validation pending",
-    vertices: [...points, points[0]].map(([x, y]) => [x + crop.x, y + crop.y].map(v => +v.toFixed(8)))
+    vertices: [...points, points[0]].map(pagePoint)
   });
   if (selected >= 0) next[selected] = record;
   else next.push(record);
+
   const stem = filename.replace(/\.pdf$/i, "");
-  const name = `${stem}_studyArea_trace_web_v${String(version++).padStart(2, "0")}.json`;
-  const url = URL.createObjectURL(new Blob([JSON.stringify(next, null, 2)], { type: "application/json" }));
+  const name = `${stem}_studyArea_trace_web_v${String(traceVersion++).padStart(2, "0")}.json`;
+  download(name, JSON.stringify(next, null, 2), "application/json");
+};
+
+$("load-calibration").onchange = () => attempt(async () => {
+  const file = $("load-calibration").files[0];
+  $("load-calibration").value = "";
+  if (!file) return;
+  calibration.cancelPlacement();
+  const fileData = JSON.parse(await file.text());
+  const data = fileData?.tracer_export === "calibration" ? fileData.calibration : fileData;
+  if (Array.isArray(data) || data?.tracer_export === "study-area") {
+    throw Error("This is an outline file. Use Back to editing, then Load reference JSON or GeoJSON to reopen it.");
+  }
+  if (!Array.isArray(data?.controls)) {
+    throw Error("This file does not contain calibration control points.");
+  }
+  calibration.load(data);
+  status("Calibration loaded. Review its points and projection assumptions.");
+});
+
+function download(name, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
   const link = document.createElement("a");
   link.href = url; link.download = name; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   status(`Downloaded ${name}`);
-};
+}
 
 showStep(0);
+$("startup-help").hidden = true;

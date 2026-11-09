@@ -101,14 +101,18 @@ for counting rules, denominators, missing-field applicability and limitations.
 
 [Open Study Area Tracer](https://spatialmarine.github.io/REDUCE_review/study-area-tracer/) to draw or revise a study-area outline from a PDF map. Select a page, crop the map, and trace the boundary or load a saved outline to edit it. The tool runs in your browser. PDFs and trace files stay on your device.
 
-To run it locally on Windows, double-click `docs/study-area-tracer/start-local.cmd`. On other platforms, run `python3 docs/study-area-tracer/serve.py` from the repository root. Keep the launcher window open while you work.
+To run it locally on Windows, double-click `docs/study-area-tracer/start-local.cmd`. On other platforms, run `python3 docs/study-area-tracer/serve.py` from the repository root. Keep the launcher window open and use the browser tab at the printed `http://127.0.0.1` address. Opening `index.html` directly from disk prevents the browser from loading the modules that open PDFs.
 
 1. Choose a PDF and open the page containing the map.
 2. Click two opposite corners to select a panel. Use **Zoom** to inspect the crop.
-3. Click along the boundary, or use **Load reference JSON** and **Edit this outline** to revise an existing trace. You can move, add, delete or undo vertices.
-4. Click **Close outline**, review the shape and select **Download JSON**.
+3. Click along the boundary, or use **Load reference JSON or GeoJSON** and **Edit this outline** to revise a saved trace. You can move, add, delete or undo vertices.
+4. Click **Close outline**. Use **Download editable JSON draft** to save an outline in PDF page pixels. To georeference it, mark at least three well-distributed **Fit** points and at least one distinct **Check** point, or load a calibration file. Review the errors and extrapolation.
+5. Enter the reviewer name or ID and complete the checklist. If the outline extends outside the Fit boundary, record which part you checked and what reference supports its location. Both downloads unlock together. The calibration GeoJSON contains the control points and the study-area GeoJSON contains the polygon.
+6. Open either file in QGIS. To edit it in the tracer, reopen the study-area file as a reference in step 3 or load the calibration file in step 4. Both files retain their review details. Reopening or changing the outline or controls requires a fresh confirmation before export.
 
-PDFs and trace files are processed in the browser. The exported coordinates are PDF page pixels. Georeferencing is a separate step.
+When filing reviewed GeoJSON exports, give both files the shared `<paperID>_<PDF_stem>_Fig<NN>` stem and keep their `_study-area.geojson` and `_calibration.geojson` suffixes. See [the storage protocol](AGENTS.md#store-reviewed-study-area-geojson) for the reviewer folder and workbook fields.
+
+PDFs, traces and calibrations are processed in the browser. The preview compares the loaded calibration with the current fit. It uses geographic degrees and has no reference basemap. Compare the exported layers with independent references before using them in the coverage analysis.
 
 The tool bundles PDF.js 6.5.438 under its [Apache 2.0 licence](docs/study-area-tracer/vendor/LICENSE).
 

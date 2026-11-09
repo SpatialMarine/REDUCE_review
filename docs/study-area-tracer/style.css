@@ -17,4 +17,16 @@ button:focus-visible,.button:focus-within,input:focus-visible,select:focus-visib
 .map{position:relative;margin:0 auto;line-height:0}.map canvas{position:absolute;inset:0;width:100%;height:100%}#overlay{cursor:crosshair;touch-action:manipulation}
 .empty{display:grid;place-content:center;text-align:center;gap:5px;min-height:260px;color:#536b7a;background:#f8fafc;border-top:1px solid #e2e9ee}
 .key{font-size:.85rem;display:inline-flex;align-items:center;gap:5px}.key i{width:15px;border-top:3px solid #d74616}.key.blue i{border-top:3px dashed #0065a8}
+#calibration{margin-top:12px;border-top:1px solid #d8e1e8;padding-top:10px}
+#calibration h3{margin:0;font-size:1rem}
+.calibration-guide{margin:10px 0;padding:8px 12px 8px 32px;background:#f1f5f8;border-radius:5px}
+.calibration-guide li+li{margin-top:4px}
+#geographic-review{margin:10px 0;border:1px solid #d8e1e8;border-radius:5px}
+#geographic-review label{display:block;margin:4px 0}
+.control-table{overflow-x:auto;margin:10px 0}
+.control-table table{border-collapse:collapse;text-align:left;font-size:.9rem}
+.control-table th,.control-table td{padding:4px 7px;border-bottom:1px solid #d8e1e8;white-space:nowrap}
+.control-table input[type=number]{width:100px}
+.control-table button+button{margin-left:5px}
+#geo-preview{width:min(100%,400px);background:#f1f5f8;border:1px solid #d8e1e8;border-radius:5px}
 @media(max-width:600px){main{padding:0 10px}.steps{grid-template-columns:repeat(2,1fr)}.brand{padding-inline:12px}}

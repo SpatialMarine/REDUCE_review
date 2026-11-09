@@ -88,6 +88,12 @@ Apply **LANGUAGE → DOCUMENT → NOTOPIC → LOCATION → GEAR → TAXA → STU
 - In `geometry_file`, record the path relative to the reviewer workbook, for example `Polygons/DRG/Megafauna catch/1560_Fernandez_JNorthwAtlFishSci_2005_Fig01_trace.json`. Record the figure or page and what the outline represents in `source_reference`. Flag approximate outlines and state what was used to draw them.
 - Once the trace has been saved, set `polygon_studyArea` to `Yes` and `geometry_checked` to `No` until the reviewer checks it in the web tool. After checking, the reviewer records whether they edited the trace and, if they did, whether they uploaded the edited file.
 
+### Store reviewed study-area GeoJSON
+
+- Save the polygon and its calibration together in the same reviewer and topic folder as the trace.
+- Use the shared stem `<paperID>_<PDF_stem>_Fig<NN>`, adding a panel or area identifier when needed. End the polygon filename with `_study-area.geojson` and the calibration filename with `_calibration.geojson`.
+- Complete the tracer's geographic review before exporting the pair. Leave the case pending if it cannot be checked. Keep historical `_trace.json` files. For reviewed geometry, record the polygon GeoJSON path relative to the reviewer workbook in `geometry_file` and describe the source figure and what the outline represents in `source_reference`.
+
 ### Check before saving
 
 Confirm that each rejection uses the first supported code, each acceptance has a blank exclusion code and unresolved cases remain distinguishable in the notes. Check that only the approved review fields and paper IDs were edited. Report accepted, rejected and pending counts and list unresolved paper IDs.
