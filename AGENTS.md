@@ -52,48 +52,6 @@ Follow the repository's conventions, architecture, test commands, and rules for 
 
 Use `src/07_screeningFeedback.R` as the approved style reference for analysis scripts in this repository.
 
-## REDUCE_review full-text screening protocol
+## REDUCE full-text work
 
-### Scope and recording
-
-- Confirm the workbook, reviewer code and paper IDs in scope before screening. Use the full text and any relevant supplements. Use titles, abstracts and existing classifications to guide retrieval and assessment.
-- In `Full_text_screening`, keep one row per assigned `paperID`. Preserve the bibliographic fields, DOI links, dropdowns and both review blocks. Keep data extraction outside this stage until the extraction fields and instructions have been agreed.
-- The AI writes only `rev_AI`, `FT_decisionAI`, `FT_exclCriteria_AI` and `notes_AI`. Record the model actually used in `rev_AI`. If its exact identifier is unavailable, record only the model information that can be verified.
-- The human reviewer reads the AI assessment and records their own decision in `FT_decisionRev1`, even when it agrees with the AI. Preserve the prefilled code in `rev1_name`. Use `FT_exclCriteria_rev1` and `notes` for the human rationale. Human decisions are used for consolidation and PRISMA counts. Keep both human assessments for double-assigned articles and document AI assistance in the methodology.
-- Select `Accepted` or `Rejected` from the decision dropdown. For a rejection, select exactly one exclusion code from the corresponding dropdown. Leave the exclusion code blank for accepted or pending articles. In the applicable notes column, give a short, article-specific rationale in English, citing the page, section, table, figure or supplement when available.
-- If the full text has not been retrieved or an unresolved question could change the decision, leave the decision and criterion blank. Record the retrieval issue or the specific evidence still needed in the applicable notes column.
-
-### Apply the criteria in order
-
-Apply **LANGUAGE → DOCUMENT → NOTOPIC → LOCATION → GEAR → TAXA → STUDY_TYPE**. For a rejected article, record the first applicable exclusion code in this hierarchy. If uncertainty about an earlier criterion could change the recorded code, flag the article for review. Consider all eligible topic pathways before rejecting a paper. The topic, location, gear and taxa used to justify inclusion must refer to the same qualifying evidence.
-
-1. **LANGUAGE.** The full text must be in English. An English title or abstract alone is insufficient.
-2. **DOCUMENT.** Eligible formats are journal articles, reports and book chapters. Exclude presentations, editorial material, letters, news items, conference or meeting abstracts, posters, dissertations and theses.
-3. **NOTOPIC.** The study must directly quantify, describe, map, estimate or analyse an eligible topic. Check the methods and results, including relevant secondary results for megafauna catch.
-   - **Fishing effort.** One of the study's primary objectives must be to quantify, describe, map, estimate, analyse or compare effort. Developing or reanalysing datasets such as Global Fishing Watch qualifies when the study reports effort metrics or patterns. Using effort solely as an explanatory variable is insufficient unless another topic qualifies.
-   - **IUU fishing.** The study must directly address illegal, unreported or unregulated fishing. A mention in the background or discussion is insufficient.
-   - **Ghost gear.** The study must directly address abandoned, lost or otherwise discarded fishing gear (ALDFG).
-   - **Megafauna catch.** Include evidence of observed captures or estimates based on capture data. Spatial overlap, vessel attendance and other behavioural interactions alone are insufficient. When bycaught animals are used to study diet, genetics, parasites, taxonomy or another topic, check for eligible capture or bycatch rates. Those rates can qualify even when bycatch is a secondary objective. The use of bycaught specimens alone is insufficient. Apply the separate TAXA criterion to studies that otherwise address capture.
-4. **LOCATION.** Eligible evidence must concern the West African study area in FAO Area 34 or 47. For global or multi-region studies, look for a relevant case study or identifiable results for the area. A passing mention of the area is insufficient.
-5. **GEAR.** Eligible gears are industrial purse seine, longline and trawl. Commercial-vessel studies and research-vessel surveys using eligible gear can qualify. Exclude artisanal and small-scale fisheries. For mixed-gear studies, check that qualifying evidence can be attributed to an eligible gear.
-6. **TAXA.** Applies only to the megafauna catch pathway. Eligible groups are marine mammals, sea turtles, seabirds and chondrichthyans. A paper can still qualify through fishing effort, IUU fishing or ghost gear.
-7. **STUDY_TYPE.** Exclude non-empirical literature reviews, conceptual or perspective papers, protocol reviews and methods-only papers without an eligible empirical application. Meta-analyses can qualify if they meet the remaining criteria. A methods paper can qualify if it tests the method on an eligible case in the study area.
-
-### Store full-text PDFs and study-area polygons
-
-- Use the reviewer acronyms defined in `src/09_prepareFullTextReviewerFiles.R`. Within `output/full_text_screening/by_reviewer`, store PDFs in `Papers/<reviewer_code>/<topic>/` and polygon traces in `Polygons/<reviewer_code>/<topic>/`. Use the topic folder names `IUU`, `Megafauna catch`, `Fishing effort` and `Ghost gear`.
-- Name each PDF `FirstAuthor_JournalAbbrev_Year.pdf`. Use the first author's surname, the abbreviated journal name and the publication year. For reports, use the publisher or series abbreviation in place of the journal. Keep the source PDF in its original location and copy it to the assigned reviewer and topic folder with the standard name. If a paper is extracted for more than one topic, place a copy in each applicable topic folder.
-- Name each editable polygon trace `<paperID>_<PDF_stem>_Fig<NN>_trace.json`. For example, `1560_Fernandez_JNorthwAtlFishSci_2005_Fig01_trace.json` matches `Fernandez_JNorthwAtlFishSci_2005.pdf`. If a figure contains several outlines, add a panel or area identifier to distinguish them.
-- For a paper assigned to two reviewers, place a copy of the PDF in each reviewer's folder and keep their polygon files separate. Store each polygon in the topic folder for the result it represents. Keep the PDF filename recorded in each trace consistent with the PDF the reviewer opens in the web tool.
-- In `geometry_file`, record the path relative to the reviewer workbook, for example `Polygons/DRG/Megafauna catch/1560_Fernandez_JNorthwAtlFishSci_2005_Fig01_trace.json`. Record the figure or page and what the outline represents in `source_reference`. Flag approximate outlines and state what was used to draw them.
-- Once the trace has been saved, set `polygon_studyArea` to `Yes` and `geometry_checked` to `No` until the reviewer checks it in the web tool. After checking, the reviewer records whether they edited the trace and, if they did, whether they uploaded the edited file.
-
-### Store reviewed study-area GeoJSON
-
-- Save the polygon and its calibration together in the same reviewer and topic folder as the trace.
-- Use the shared stem `<paperID>_<PDF_stem>_Fig<NN>`, adding a panel or area identifier when needed. End the polygon filename with `_study-area.geojson` and the calibration filename with `_calibration.geojson`.
-- Complete the tracer's geographic review before exporting the pair. Leave the case pending if it cannot be checked. Keep historical `_trace.json` files. For reviewed geometry, record the polygon GeoJSON path relative to the reviewer workbook in `geometry_file` and describe the source figure and what the outline represents in `source_reference`.
-
-### Check before saving
-
-Confirm that each rejection uses the first supported code, each acceptance has a blank exclusion code and unresolved cases remain distinguishable in the notes. Check that only the approved review fields and paper IDs were edited. Report accepted, rejected and pending counts and list unresolved paper IDs.
+Read and follow [the REDUCE full-text protocol](FULL_TEXT_PROTOCOL.md) before screening full texts, extracting data, or handling study-area geometry. Follow its rules for recording AI proposals and changes to populated cells.

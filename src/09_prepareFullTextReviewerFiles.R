@@ -14,7 +14,7 @@ library(dplyr)
 # 1.1. Read the assignment workbook from script 08 -----------------------------
 
 assignment_file <- file.path(output_data, "full_text_screening", "split_fullText_screening.xlsx")
-template_file <- file.path(input_data, "REDUCE_extraction_template.xlsx")
+template_file <- file.path(input_data, "REDUCE_extraction_template.xlsm")
 reviewer_dir <- file.path(output_data, "full_text_screening", "by_reviewer")
 
 # 2. Prepare the articles and reviewer codes -----------------------------------
@@ -58,21 +58,29 @@ papers$doi <- ifelse(!is.na(doi) & nzchar(doi), paste0("https://doi.org/", doi),
 
 # 3.1. Read the template headers and check the export paths ---------------------
 
-# Locate the prefilled fields by name in the second header row.
+# Match the screening classifications to the editable final fields in the template.
+final_columns <- c(Topic_standardised = "Topic_final", TaxaGroup_standardised = "TaxaGroup_final",
+                   fishingGear_standardised = "fishingGear_final")
+prefill_columns <- c(paper_columns[!paper_columns %in% names(final_columns)], unname(final_columns))
 template_columns <- names(read_excel(template_file, sheet = "dataExtraction", skip = 1, n_max = 0))
-export_columns <- match(c(paper_columns, "rev1_name"), template_columns)
+export_columns <- match(c(prefill_columns, "rev1_name"), template_columns)
 stopifnot(!anyNA(export_columns), identical(excel_sheets(template_file)[2], "dataExtraction"))
 
 # Check all paths before writing so a rerun cannot overwrite completed reviews.
-files <- file.path(reviewer_dir, paste0("full_text_", reviewer_codes[assigned_reviewers], ".xlsx"))
+files <- file.path(reviewer_dir, paste0("full_text_", reviewer_codes[assigned_reviewers], ".xlsm"))
 if (any(file.exists(files))) {
   stop("Reviewer workbooks already exist: ", paste(basename(files[file.exists(files)]), collapse = ", "))
 }
 dir.create(reviewer_dir, recursive = TRUE, showWarnings = FALSE)
 
-# Unpack the template once. Rewriting only its data sheet preserves drawings and Excel validations.
-template_dir <- tempfile("reviewer_template_")
+# Check for embedded VBA before preparing any reviewer workbook.
 template_parts <- unzip(template_file, list = TRUE)$Name
+if (!"xl/vbaProject.bin" %in% template_parts) {
+  stop("The reviewer template has no embedded VBA project: ", template_file)
+}
+
+# Rewrite only the data sheet to preserve VBA, drawings and Excel validations.
+template_dir <- tempfile("reviewer_template_")
 unzip(template_file, exdir = template_dir)
 sheet_file <- file.path(template_dir, "xl", "worksheets", "sheet2.xml")
 sheet_xml <- paste(readLines(sheet_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
@@ -84,6 +92,10 @@ sheet_top <- substr(sheet_xml, 1L, rows_end - 1L)
 sheet_bottom <- substring(sheet_xml, rows_end)
 
 # 3.2. Fill the template with each reviewer's assigned papers -------------------
+
+# Keep the audited preferred record only when both IDs occur for the same reviewer.
+preferred_paper_ids <- c("1814" = "1129", "2257" = "1513", "2103" = "1533", "2236" = "1668",
+                         "1928" = "1696", "1879" = "923", "1913" = "567")
 
 # Escape text for Excel's XML, preserving Unicode and line breaks in abstracts.
 escape_xml <- function(text) {
@@ -103,10 +115,20 @@ for (i in seq_along(assigned_reviewers)) {
   reviewer <- assigned_reviewers[i]
   code <- unname(reviewer_codes[reviewer])
 
-  # Keep one initial row per assigned paper, including both assignment roles.
+  # Collect both assignment roles before checking for duplicates within this reviewer.
   screening <- papers %>%
     filter(full_text_reviewer_1 == reviewer | full_text_reviewer_2 == reviewer) %>%
-    select(all_of(paper_columns)) %>%
+    select(all_of(paper_columns))
+
+  # Drop an audited alternate only when the preferred paper is also assigned here.
+  alternate_ids <- names(preferred_paper_ids)[preferred_paper_ids %in% screening$paperID]
+  screening <- screening %>% filter(!paperID %in% alternate_ids)
+
+  # Keep the first record for an identical DOI and keep papers with no DOI separate.
+  doi_key <- tolower(screening$doi)
+  screening <- screening %>%
+    filter(is.na(doi_key) | !duplicated(doi_key)) %>%
+    rename(all_of(setNames(names(final_columns), final_columns))) %>%
     mutate(rev1_name = code)
 
   # Keep rows within the template's filter and validation ranges.
@@ -144,7 +166,7 @@ for (i in seq_along(assigned_reviewers)) {
   dimension <- paste0('<dimension ref="A1:', last_column)
   top <- sub(paste0(dimension, '2"'), paste0(dimension, nrow(screening) + 2L, '"'), sheet_top, fixed = TRUE)
   writeLines(enc2utf8(paste0(top, paste0(rows, collapse = ""), sheet_bottom)), sheet_file, useBytes = TRUE)
-  staged_file <- tempfile("reviewer_", fileext = ".xlsx")
+  staged_file <- tempfile("reviewer_", fileext = ".xlsm")
   zip::zipr(staged_file, template_parts[!endsWith(template_parts, "/")], root = template_dir, include_directories = FALSE, mode = "mirror")
 
   # Publish the completed workbook only if the destination is still free.
