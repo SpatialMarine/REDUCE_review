@@ -106,7 +106,7 @@ To run it locally on Windows, double-click `docs/study-area-tracer/start-local.c
 1. Choose a PDF and open the page containing the map.
 2. Click two opposite corners to select a panel. Use **Zoom** to inspect the crop.
 3. Click along the boundary, or use **Load reference JSON or GeoJSON** and **Edit this outline** to revise a saved trace. You can move, add, delete or undo vertices.
-4. Click **Close outline**. Use **Download editable JSON draft** to save an outline in PDF page pixels. To georeference it, mark at least three well-distributed **Fit** points and at least one distinct **Check** point, or load a calibration file. Review the errors and extrapolation.
+4. Click **Close outline**. To georeference the outline, mark at least three well-distributed **Fit** points and at least one distinct **Check** point, or load a calibration file. Review the errors and extrapolation.
 5. Enter the reviewer name or ID and complete the checklist. If the outline extends outside the Fit boundary, record which part you checked and what reference supports its location. Both downloads unlock together. The calibration GeoJSON contains the control points and the study-area GeoJSON contains the polygon.
 6. Open either file in QGIS. To edit it in the tracer, reopen the study-area file as a reference in step 3 or load the calibration file in step 4. Both files retain their review details. Reopening or changing the outline or controls requires a fresh confirmation before export.
 
