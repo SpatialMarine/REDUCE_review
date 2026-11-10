@@ -33,12 +33,37 @@ stopifnot(!anyNA(papers$paperID), all(nzchar(papers$paperID)), !anyDuplicated(pa
           !anyNA(papers$full_text_reviewer_1),
           all(is.na(papers$full_text_reviewer_2) | papers$full_text_reviewer_1 != papers$full_text_reviewer_2))
 
-# 2.2. Match the full reviewer names to the original screening codes ------------
+# 2.2. Match reviewer names to codes and rebalance chondrichthyan papers --------
 
 reviewer_codes <- setNames(
-  c("DRG", "PGU", "CL", "ISM", "DFF", "TM", "ABC", "NPS", "AEP", "DK", "LNH", "JOB", "CS", "GA", "EM"),
-  c("David Ruiz-Garc\u00eda", "Paola Gabasa", "Clara Lerebourg", "Ignacio de Saint-Malo Zamacola", "Diego Fern\u00e1ndez-Fern\u00e1ndez", "Teresa Milit\u00e3o", "Ana Carneiro", "N\u00faria Pati\u00f1o Sevillano", "Alejandro Espada-Pastor", "David M. Kaplan", "Leia Navarro-Herrero", "Jazel Ouled-Cheikh", "Catarina N. S. Silva", "Gill Ainsworth", "Esther Mollier")
+  c("DRG", "PGU", "CL", "ISM", "DFF", "TM", "ABC", "NPS", "AEP", "DK", "LNH", "JOB", "CS", "GA", "EM", "MS"),
+  c("David Ruiz-Garc\u00eda", "Paola Gabasa", "Clara Lerebourg", "Ignacio de Saint-Malo Zamacola", "Diego Fern\u00e1ndez-Fern\u00e1ndez", "Teresa Milit\u00e3o", "Ana Carneiro", "N\u00faria Pati\u00f1o Sevillano", "Alejandro Espada-Pastor", "David M. Kaplan", "Leia Navarro-Herrero", "Jazel Ouled-Cheikh", "Catarina N. S. Silva", "Gill Ainsworth", "Esther Mollier", "Mara Segovia")
 )
+
+# Transfer these single-review assignments without changing the script 08 input.
+mara_transfers <- list(
+  DRG = c("11", "348", "352", "423", "474", "524", "537", "1329"),
+  CL = c("510", "797", "801", "831", "1403", "1573", "1722", "1729"),
+  PGU = c("18", "21", "186", "234", "529", "921", "979", "1963")
+)
+transfer_ids <- unlist(mara_transfers, use.names = FALSE)
+transfer_rows <- match(transfer_ids, papers$paperID)
+expected_codes <- rep(names(mara_transfers), lengths(mara_transfers))
+
+# Stop if a future assignment file changes the scope of any agreed transfer.
+stopifnot(!anyDuplicated(transfer_ids))
+actual_codes <- unname(reviewer_codes[papers$full_text_reviewer_1[transfer_rows]])
+eligible_transfer <- !is.na(actual_codes) & actual_codes == expected_codes &
+  is.na(papers$full_text_reviewer_2[transfer_rows]) &
+  papers$Topic_standardised[transfer_rows] %in% "Megafauna catch" &
+  papers$TaxaGroup_standardised[transfer_rows] %in% "Chondrichthyans"
+if (!all(eligible_transfer)) {
+  stop("Mara Segovia transfer does not match the assignment workbook for paperID(s): ",
+       paste(transfer_ids[!eligible_transfer], collapse = ", "))
+}
+
+# Assign the checked papers to Mara before deriving the output reviewer list.
+papers$full_text_reviewer_1[transfer_rows] <- "Mara Segovia"
 assigned_reviewers <- sort(unique(na.omit(c(papers$full_text_reviewer_1, papers$full_text_reviewer_2))))
 unknown_reviewers <- setdiff(assigned_reviewers, names(reviewer_codes))
 
