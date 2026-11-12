@@ -1,7 +1,7 @@
 # REDUCE full-text protocol
 
 Use this protocol with your reviewer workbook and its `columnExplanation` tab. The AI screens each paper and immediately extracts provisional data for papers it accepts. The assigned reviewer then checks both stages and records the final human screening decision.
-
+ 
 ## 1. Full-text screening
 
 ### Scope and recording
