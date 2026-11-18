@@ -1,25 +1,15 @@
 # -----------------------------------------------------------------------------
+
+# Title:
+
+# -----------------------------------------------------------------------------
 # 11. PRISMA counts and editable PowerPoint workflow
 # -----------------------------------------------------------------------------
-# Run src/0_setup.R first. This script reads project inputs without modifying them.
+# This script reads project inputs without modifying them.
 # To test safely, set options(reduce.prisma.output_dir = tempfile("prisma-")) first.
-# PowerPoint export uses zip, already used by the project's Excel tooling.
+
 library(readxl)
 library(stringr)
-
-# Print a compact checkpoint after each analytical block so the run can be monitored.
-monitor_block <- function(label, object = NULL, n = NULL, show_head = FALSE) {
-  message("\n--- ", label, " ---")
-  if (!is.null(n)) message("Rows/records: ", n)
-  if (!is.null(object)) {
-    message("Structure:")
-    print(utils::str(object, max.level = 1, give.attr = FALSE))
-    if (show_head && nrow(as.data.frame(object)) > 0) print(utils::head(object, 3))
-  }
-}
-
-# Format calculated and unresolved values consistently in checkpoints and exports.
-display_n <- function(x) if (is.na(x)) "Pending" else format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
 
 # 1. Input and output paths ----------------------------------------------------
 
@@ -29,7 +19,7 @@ if (!exists("input_data") || !exists("output_data")) stop("Load src/0_setup.R fi
 ris_files <- file.path(input_data, "RIS", c("scopus.ris", "wos1.ris", "wos2.ris"))
 # Load the deduplicated bibliographic list created by the existing REDUCE workflow.
 paper_file <- file.path(input_data, "rm_duplicates", "paperList.xlsx")
-# Load final human title/abstract decisions.
+# Load final title/abstract decisions.
 screening_file <- file.path(output_data, "abstract_screening", "abstract_screening_final.xlsx")
 # Load optional manual corrections for unclassified abstract exclusions.
 correction_file <- file.path(output_data, "abstract_screening_exclusion_assignments.xlsx")
@@ -41,7 +31,9 @@ assignment_file <- file.path(output_data, "full_text_screening", "split_fullText
 study_map_file <- file.path(input_data, "prisma_study_map.csv")
 # Define the folder for CSV audits and the editable PowerPoint.
 export_dir <- getOption("reduce.prisma.output_dir", file.path(output_data, "PRISMA"))
-monitor_block("Input paths", data.frame(name = c("RIS", "paper list", "abstract screening", "reviewers", "assignments", "exports"), path = c(paste(ris_files, collapse = " | "), paper_file, screening_file, reviewer_dir, assignment_file, export_dir)))
+# Show the result of this block.
+message("\n--- Input paths ---")
+print(c(ris_files, paper_file, screening_file, correction_file, reviewer_dir, assignment_file, study_map_file, export_dir))
 
 # A report is one paperID; an optional paperID/studyID map links multiple reports of one study.
 # Missing map entries keep the study count pending rather than equating reports with studies.
@@ -82,7 +74,11 @@ for (file in ris_files) {
 }
 raw_records <- do.call(rbind, raw_records)
 rownames(raw_records) <- NULL
-monitor_block("Raw RIS records loaded", raw_records, nrow(raw_records), TRUE)
+
+# Show the result of this block.
+message("\n--- Raw RIS records loaded ---")
+message("Rows: ", nrow(raw_records), " | Columns: ", ncol(raw_records))
+print(utils::head(raw_records, 3))
 
 # Load the saved post-deduplication paper list for reconciliation.
 papers <- readxl::read_excel(paper_file, col_types = "text")
@@ -105,7 +101,10 @@ for (i in seq_along(key_tables)) {
 }
 raw_records <- key_tables[[1]]
 papers <- key_tables[[2]]
-monitor_block("DOI/title keys normalised", papers, nrow(papers), TRUE)
+# Show the result of this block.
+message("\n--- DOI/title keys normalised ---")
+message("Rows: ", nrow(papers), " | Columns: ", ncol(papers))
+print(utils::head(papers[c("paperID", "doi", "dedup_key")], 3))
 
 # 2.2. Reconcile duplicates against the actual screening population ------------
 
@@ -122,7 +121,9 @@ n_identified <- nrow(raw_records)
 n_duplicates <- sum(raw_records$duplicate_removed)
 n_screened <- nrow(papers)
 stopifnot(n_identified - n_duplicates == n_screened)
-monitor_block("Identification reconciled", database_counts, n_identified)
+# Show the result of this block.
+message("\n--- Identification reconciled ---")
+print(database_counts, row.names = FALSE)
 message("Identified: ", n_identified, " | duplicates: ", n_duplicates, " | after deduplication: ", n_screened)
 
 # 3. Title and abstract screening ---------------------------------------------
@@ -136,7 +137,10 @@ if (!all(required %in% names(screening))) stop("Missing final screening columns.
 if (anyNA(screening$paperID) || anyDuplicated(screening$paperID) ||
     !setequal(screening$paperID, papers$paperID)) stop("Screening IDs do not match the post-deduplication list.")
 screening$criterion <- screening$TA_exclCriteria_final
-monitor_block("Abstract-screening workbook loaded", screening, nrow(screening), TRUE)
+# Show the result of this block.
+message("\n--- Abstract-screening workbook loaded ---")
+message("Rows: ", nrow(screening), " | Columns: ", ncol(screening))
+print(utils::head(screening[c("paperID", "final_decision", "criterion")], 3))
 
 # Apply only saved manual corrections, using the precedence in script 06.
 if (file.exists(correction_file)) {
@@ -164,7 +168,9 @@ n_ta_excluded <- sum(rejected)
 sought_ids <- screening$paperID[!rejected]
 n_sought <- length(sought_ids)
 stopifnot(n_screened == n_ta_excluded + n_sought, sum(ta_exclusions$n) == n_ta_excluded)
-monitor_block("Title/abstract screening completed", ta_exclusions, n_ta_excluded)
+# Show the result of this block.
+message("\n--- Title/abstract screening completed ---")
+print(ta_exclusions, row.names = FALSE)
 message("Screened: ", n_screened, " | excluded: ", n_ta_excluded, " | sought for retrieval: ", n_sought)
 
 # 4. Retrieval and full-text eligibility --------------------------------------
@@ -191,7 +197,10 @@ for (file in tracker_files) {
     path = paths, exists = file.exists(paths))
 }
 trackers <- if (length(tracker_rows)) do.call(rbind, tracker_rows) else data.frame(paperID = character())
-monitor_block("PDF trackers loaded", trackers, nrow(trackers), TRUE)
+# Show the result of this block.
+message("\n--- PDF trackers loaded ---")
+message("Rows: ", nrow(trackers), " | Columns: ", ncol(trackers))
+print(utils::head(trackers, 3))
 retrieval <- data.frame(paperID = sought_ids, status = "Pending verification", verified = FALSE)
 for (i in seq_along(sought_ids)) {
   # Any available copy resolves retrieval; contradictory, missing or stale entries remain pending.
@@ -212,7 +221,10 @@ n_not_retrieved_recorded <- sum(retrieval$status == "Not retrieved")
 n_retrieval_pending <- sum(retrieval$status == "Pending verification")
 n_not_retrieved <- if (retrieval_complete) sum(retrieval$status == "Not retrieved") else NA_integer_
 n_available <- if (retrieval_complete) n_sought - n_not_retrieved else NA_integer_
-monitor_block("Retrieval status calculated", retrieval, nrow(retrieval), TRUE)
+# Show the result of this block.
+message("\n--- Retrieval status calculated ---")
+message("Rows: ", nrow(retrieval), " | Columns: ", ncol(retrieval))
+print(utils::head(retrieval, 3))
 print(table(retrieval$status, useNA = "always"))
 
 # 4.2. Collapse result rows into independent human paper/reviewer assessments ---
@@ -239,14 +251,20 @@ for (file in review_files) {
     file = file)
 }
 reviews <- if (length(review_rows)) do.call(rbind, review_rows) else data.frame(paperID = character())
-monitor_block("Human full-text review rows loaded", reviews, nrow(reviews), TRUE)
+# Show the result of this block.
+message("\n--- Human full-text review rows loaded ---")
+message("Rows: ", nrow(reviews), " | Columns: ", ncol(reviews))
+print(utils::head(reviews, 3))
 
 # Use the assignment roster so a missing second-reviewer workbook cannot imply consensus.
 assignments <- readxl::read_excel(assignment_file, sheet = "Full_text_papers", col_types = "text")
 required <- c("paperID", "full_text_reviewer_1", "full_text_reviewer_2")
 if (!all(required %in% names(assignments)) || anyDuplicated(assignments$paperID) ||
     !setequal(assignments$paperID, sought_ids)) stop("Full-text assignments do not match the sought reports.")
-monitor_block("Full-text assignment roster loaded", assignments, nrow(assignments), TRUE)
+# Show the result of this block.
+message("\n--- Full-text assignment roster loaded ---")
+message("Rows: ", nrow(assignments), " | Columns: ", ncol(assignments))
+print(utils::head(assignments[required], 3))
 eligibility <- data.frame(paperID = sought_ids, decision = NA_character_, criterion = NA_character_, issue = "No human assessment")
 for (i in seq_along(sought_ids)) {
   # All assigned human assessments and linked result rows must agree before consolidation.
@@ -285,7 +303,10 @@ for (i in seq_along(sought_ids)) {
   eligibility$criterion[i] <- if (x$decision[1] == "Rejected") x$criterion[1] else NA_character_
   eligibility$issue[i] <- "Resolved"
 }
-monitor_block("Human full-text eligibility assessed", eligibility, nrow(eligibility), TRUE)
+# Show the result of this block.
+message("\n--- Human full-text eligibility assessed ---")
+message("Rows: ", nrow(eligibility), " | Columns: ", ncol(eligibility))
+print(utils::head(eligibility, 3))
 print(table(eligibility$issue, useNA = "always"))
 
 # Publish final full-text totals only when all available reports have resolved human decisions.
@@ -300,8 +321,10 @@ if (ft_complete) {
   ft_exclusions$n <- as.integer(table(factor(eligibility$criterion[eligibility$decision %in% "Rejected"], levels = criteria)))
   stopifnot(n_assessed == n_ft_excluded + n_included_reports, sum(ft_exclusions$n) == n_ft_excluded)
 }
-monitor_block("Full-text exclusion summary", ft_exclusions, if (ft_complete) n_assessed else NA_integer_, TRUE)
-message("Full-text complete: ", ft_complete, " | assessed: ", display_n(n_assessed), " | included reports: ", display_n(n_included_reports))
+# Show the result of this block.
+message("\n--- Full-text exclusion summary ---")
+print(ft_exclusions, row.names = FALSE)
+message("Full-text complete: ", ft_complete, " | assessed: ", if (is.na(n_assessed)) "Pending" else n_assessed, " | included reports: ", if (is.na(n_included_reports)) "Pending" else n_included_reports)
 
 # Count underlying studies only from an explicit mapping; publications are not always studies.
 n_included_studies <- NA_integer_
@@ -314,7 +337,7 @@ if (ft_complete && n_included_reports > 0 && file.exists(study_map_file)) {
   study_ids <- study_map$studyID[match(included_ids, study_map$paperID)]
   if (!anyNA(study_ids) && all(trimws(study_ids) != "")) n_included_studies <- length(unique(study_ids))
 }
-message("Unique included studies: ", display_n(n_included_studies), " (requires a complete paperID/studyID map)")
+message("Unique included studies: ", if (is.na(n_included_studies)) "Pending" else n_included_studies, " (requires a complete paperID/studyID map)")
 
 # 5. Export auditable counts --------------------------------------------------
 
@@ -340,7 +363,9 @@ write.csv(retrieval, file.path(export_dir, "PRISMA_retrieval_audit.csv"), row.na
 write.csv(eligibility, file.path(export_dir, "PRISMA_human_eligibility_audit.csv"), row.names = FALSE, na = "")
 print(counts, row.names = FALSE)
 print(ta_exclusions, row.names = FALSE)
-monitor_block("CSV audit files written", counts, nrow(counts), TRUE)
+# Show the result of this block.
+message("\n--- CSV audit files written ---")
+message("CSV output directory: ", export_dir)
 
 # 6. Editable PowerPoint figure -----------------------------------------------
 
@@ -352,7 +377,13 @@ if (export_ppt && !requireNamespace("zip", quietly = TRUE)) {
 }
 if (export_ppt) {
   # Format all unknown values explicitly and keep exclusion labels in protocol order.
-  display_n <- function(x) if (is.na(x)) "Pending" else format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+  # Format slide counts and label unresolved totals.
+  slide_counts <- c(n_identified = n_identified, n_duplicates = n_duplicates, n_screened = n_screened,
+    n_ta_excluded = n_ta_excluded, n_sought = n_sought, n_not_retrieved = n_not_retrieved,
+    n_assessed = n_assessed, n_available = n_available, n_ft_excluded = n_ft_excluded,
+    n_included_studies = n_included_studies, n_included_reports = n_included_reports)
+  slide_labels <- setNames(format(slide_counts, big.mark = ",", scientific = FALSE, trim = TRUE), names(slide_counts))
+  slide_labels[is.na(slide_counts)] <- "Pending"
   ta_lines <- paste0(ta_exclusions$criterion, " (n = ", ta_exclusions$n, ")", collapse = "\n")
   ft_lines <- if (ft_complete) paste0(ft_exclusions$criterion, " (n = ", ft_exclusions$n, ")", collapse = "\n") else "Reasons and counts pending\nhuman full-text screening"
   database_lines <- paste0(database_counts$database, " (n = ", format(database_counts$records, big.mark = ",", trim = TRUE), ")", collapse = "\n")
@@ -419,24 +450,24 @@ if (export_ppt) {
   # Keep the official flow topology; report counts of records rather than calling them registers.
   ppt <- add_box(ppt, "REDUCE systematic review | PRISMA 2020", 0.2, 0.1, 13.6, 0.55, "17364D", 22, "FFFFFF", TRUE)
   ppt <- add_box(ppt, "Identification of studies via databases", 0.9, 0.85, 8.5, 0.4, "D6E5F0", 14, bold = TRUE)
-  ppt <- add_box(ppt, paste0("Records identified from databases (n = 2)\nTotal records (n = ", display_n(n_identified), ")\n", database_lines), 0.9, 1.5, 4, 1.2)
-  ppt <- add_box(ppt, paste0("Records removed before screening:\nDuplicate records (n = ", display_n(n_duplicates), ")\nNo other pre-screening removal inferred"), 5.6, 1.5, 3.8, 1.2, "F2F2F2")
+  ppt <- add_box(ppt, paste0("Records identified from databases (n = 2)\nTotal records (n = ", slide_labels[["n_identified"]], ")\n", database_lines), 0.9, 1.5, 4, 1.2)
+  ppt <- add_box(ppt, paste0("Records removed before screening:\nDuplicate records (n = ", slide_labels[["n_duplicates"]], ")\nNo other pre-screening removal inferred"), 5.6, 1.5, 3.8, 1.2, "F2F2F2")
   ppt <- add_arrow(ppt, 4.9, 1.85, 0.7, 0.4, TRUE)
   ppt <- add_arrow(ppt, 2.4, 2.7, 0.8, 0.4)
-  ppt <- add_box(ppt, paste0("Records screened\n(title and abstract)\n(n = ", display_n(n_screened), ")"), 0.9, 3.2, 4, 0.95)
-  ppt <- add_box(ppt, paste0("Records excluded (n = ", display_n(n_ta_excluded), ")\n", ta_lines), 5.6, 3.0, 3.8, 1.85, "F2F2F2", 12)
+  ppt <- add_box(ppt, paste0("Records screened\n(title and abstract)\n(n = ", slide_labels[["n_screened"]], ")"), 0.9, 3.2, 4, 0.95)
+  ppt <- add_box(ppt, paste0("Records excluded (n = ", slide_labels[["n_ta_excluded"]], ")\n", ta_lines), 5.6, 3.0, 3.8, 1.85, "F2F2F2", 12)
   ppt <- add_arrow(ppt, 4.9, 3.45, 0.7, 0.4, TRUE)
   ppt <- add_arrow(ppt, 2.4, 4.15, 0.8, 0.4)
-  ppt <- add_box(ppt, paste0("Reports sought for retrieval\n(n = ", display_n(n_sought), ")"), 0.9, 4.9, 4, 0.75)
-  ppt <- add_box(ppt, paste0("Reports not retrieved (n = ", display_n(n_not_retrieved), ")\n", n_not_retrieved_recorded,
+  ppt <- add_box(ppt, paste0("Reports sought for retrieval\n(n = ", slide_labels[["n_sought"]], ")"), 0.9, 4.9, 4, 0.75)
+  ppt <- add_box(ppt, paste0("Reports not retrieved (n = ", slide_labels[["n_not_retrieved"]], ")\n", n_not_retrieved_recorded,
     " recorded; ", n_retrieval_pending, " pending checks"), 5.6, 5.0, 3.8, 0.7, "F2F2F2", 12)
   ppt <- add_arrow(ppt, 4.9, 5.05, 0.7, 0.4, TRUE)
   ppt <- add_arrow(ppt, 2.4, 5.65, 0.8, 0.4)
-  ppt <- add_box(ppt, paste0("Reports assessed for eligibility\n(n = ", display_n(n_assessed), ")\nAvailable for assessment: ", display_n(n_available)), 0.9, 6.15, 4, 1)
-  ppt <- add_box(ppt, paste0("Reports excluded (n = ", display_n(n_ft_excluded), ")\n", ft_lines), 5.6, 6.15, 3.8, 1.85, "F2F2F2", 12)
+  ppt <- add_box(ppt, paste0("Reports assessed for eligibility\n(n = ", slide_labels[["n_assessed"]], ")\nAvailable for assessment: ", slide_labels[["n_available"]]), 0.9, 6.15, 4, 1)
+  ppt <- add_box(ppt, paste0("Reports excluded (n = ", slide_labels[["n_ft_excluded"]], ")\n", ft_lines), 5.6, 6.15, 3.8, 1.85, "F2F2F2", 12)
   ppt <- add_arrow(ppt, 4.9, 6.4, 0.7, 0.4, TRUE)
   ppt <- add_arrow(ppt, 2.4, 7.15, 0.8, 0.4)
-  ppt <- add_box(ppt, paste0("Studies included in review (n = ", display_n(n_included_studies), ")\nReports of included studies (n = ", display_n(n_included_reports), ")"), 0.9, 8.1, 4, 1, "D6E8DD", 13, bold = TRUE)
+  ppt <- add_box(ppt, paste0("Studies included in review (n = ", slide_labels[["n_included_studies"]], ")\nReports of included studies (n = ", slide_labels[["n_included_reports"]], ")"), 0.9, 8.1, 4, 1, "D6E8DD", 13, bold = TRUE)
   ppt <- add_box(ppt, ai_text, 10, 1.5, 3.7, 6.5, "EEF5F0", 13)
 
   # Include source attribution and clarify that retrieval does not equal completed eligibility assessment.
