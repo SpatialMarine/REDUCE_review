@@ -63,6 +63,19 @@ Confirm that each rejection uses the first supported code, each acceptance has a
 - **Do not leave blank gaps in the article table.** When removing, replacing or restoring an AI-created result row, reuse its position or remove the entire unused row and shift the following rows up. Clearing cells or deleting an XML row element without updating subsequent row positions is not sufficient. Never remove a row containing existing reviewer data merely to close a gap.
 - Record the reported study area and cite the page, figure, table, section or supplement in `source_reference`. Enter FAO areas, EEZs and geometry only when supported at the level of the result. Record uncertainties in `extraction_notes` and leave unsupported values blank.
 
+### Describe the study area to guide polygon delineation
+
+For each extracted result, write `study_area_as_reported` as a single paragraph in English. Combine the paper’s text, maps, captions and legends to describe the area linked to that result and explain how its polygon should be delineated.
+
+- Identify the region, relevant geographic features and fishing activity.
+- Include reported latitude, longitude, depth ranges and other limits relevant to delineation. Clearly identify approximate limits inferred from a figure.
+- Explain which mapped features guide the polygon and which side of each boundary applies. For example, specify that fishing grounds lie offshore of a coastal exclusion line.
+- State what the polygon represents, such as observed fishing grounds, a sampling footprint, a prediction domain or an approximate study extent.
+- Where a mapped regulation or boundary guides delineation, check its applicability to the extracted evidence and state any relevant temporal mismatch or uncertainty.
+- Identify boundaries that require interpretation, extrapolation or manual closure. Do not use the map frame, an EEZ boundary or a bathymetric contour as the study boundary without supporting evidence.
+
+Include the relevant figure, page or section in the paragraph. Distinguish evidence reported by the authors from proposed delineation choices. Record the detailed construction method and unresolved limitations in `extraction_notes`, and retain the supporting source locators in `source_reference`. If a polygon cannot be supported, describe the available spatial evidence and state what is missing.
+
 ### Record scientific species names
 
 - For each megafauna result, check the results text, tables, figures and relevant supplements for species linked to that row's evidence, area and gear. Enter the full scientific names as reported in `species_scientific_names`, separated by ` / `. Cite where the species are identified in `source_reference`.
@@ -119,6 +132,8 @@ For every megafauna row with `species_scientific_names` blank, confirm that the 
 - For a paper assigned to two reviewers, place a copy of the PDF in each reviewer's folder and keep their geometry pairs separate. Store each pair in the topic folder for the result it represents. Keep the PDF filename and fingerprint recorded in both exports consistent with the exact PDF the reviewer will reopen in the web tool.
 
 ### Complete the tracer workflow: select, trace, calibrate and export
+
+- Before tracing, read `study_area_as_reported` together with its cited text, figure, caption and legend. Use that description to guide the polygon’s extent and boundary interpretation. Record any additional construction choices in `extraction_notes`. If tracing reveals that the description needs correction, follow section 2’s rules for changes to populated cells.
 
 Use the [REDUCE study-area tracer](https://spatialmarine.github.io/REDUCE_review/study-area-tracer/) and complete the same four-step process as a user of that website. Do not stop after drawing the outline or bypass the geographic-review conditions that unlock the exports.
 
@@ -192,7 +207,7 @@ The fields below follow the order in the workbook's `columnExplanation` tab. Use
 | Field | What to enter |
 | --- | --- |
 | `resultID` | Use a stable ID such as `473-01` for a distinct result. Reuse it on linked rows representing that same result. A separate estimate for another area or gear gets a different ID. |
-| `study_area_as_reported` | Record the geographic wording tied to the result. Include the reported sampling area or analytical unit when this helps distinguish it from the broader study extent. |
+| `study_area_as_reported` | One paragraph describing the result-specific study area and guiding polygon delineation, following section 2. Combine text and mapped evidence, including relevant coordinates, depths, boundary interpretation and temporal applicability. Distinguish reported limits from inferred or proposed limits and cite the supporting figure/page. |
 | `FAO_area` | Record `34` or `47` when the result is reported for that area or its location falls within the linked boundary. Use `34 / 47` when the same result applies to both. Leave blank while attribution is unresolved. |
 | `EEZ` | Record the verified EEZ reporting unit or `International waters` when supported. A landing port or fleet nationality does not locate the catch. If a supported EEZ is absent from the list, name it in `extraction_notes`. |
 | `evidence_scope` | Use `Regional evidence` for a result attributable to FAO 34 or 47. In an otherwise eligible paper, use `Global evidence only` for context that cannot be separated for the region, and keep that result out of the regional synthesis. Use `Pending verification` when attribution needs checking. |
