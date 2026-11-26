@@ -135,14 +135,84 @@ For every megafauna row with `species_scientific_names` blank, confirm that the 
 
 ### Delineate the evidence footprint and restrict it to the review area
 
-Use the most spatially specific evidence available for the extracted result. First reconstruct the supported footprint, then intersect it with the union of Areas 34 and 47 in `spatial/FAO_34_47.geojson`. The final regional geometry must remain within this marine mask, including its coastal and island exclusions at the resolution of that layer.
+Use the most spatially specific evidence available for the extracted result. First reconstruct the supported footprint, then apply the statistical-scope and land-exclusion procedure below.
 
 - Where the paper explicitly defines the relevant boundary, reproduce it using the text, map, caption and legend together.
 - Where observations or fishing effort are mapped in occupied grid cells, reconstruct and merge those cells. Preserve gaps and disconnected areas. Use a reported bounding rectangle only when it represents the intended analytical domain or when more specific spatial evidence is unavailable.
 - Where the map shows sampling points without an explicit boundary, retain their locations. Construct an envelope only when the sampling design, point distribution and accompanying description support it. Treat separated groups separately. Record and justify any envelope method, distance threshold or buffer. If the evidence cannot support an area, leave polygon delineation pending.
-- Preserve the complete supported footprint as an intermediate record. Use its intersection with the FAO 34/47 mask as the regional study-area geometry. Retain disconnected components and interior holes, and check that the result contains no area outside the mask. If the intersection is empty, record that no mapped coverage falls within the review area and leave the regional geometry pending for assessment against the result's evidence.
+- Preserve the complete supported footprint as an intermediate record. Apply the accepted scope and land masks using the procedure below. Retain disconnected components and interior holes. If the intersection is empty, record that no mapped coverage falls within the review area and leave the regional geometry pending for assessment against the result's evidence.
 - Record the evidence source, construction method, mask filename and version or checksum, and any unresolved limitations in the geometry metadata and review log. Distinguish the paper's complete extent from the portion retained for this review.
 - Validate and visually inspect the geometry after clipping. Confirm that the complete geometry, including all components and holes, survives export and reopening. If the tracer cannot preserve it, retain the GIS result as pending and document the compatibility issue.
+
+### Restrict the evidence footprint to the review area and exclude land
+
+Construct the evidence footprint from the paper before applying geographic masks. Preserve this complete footprint as an intermediate record so that the regional clipping can be reproduced.
+
+Use two complementary references:
+
+- **Statistical scope.** Use Areas 34 and 47 from [FAO 34/47 boundary layer](spatial/FAO_34_47.geojson) to establish the external limits of the review region.
+- **Land exclusion.** Use the compact regional working layer [regional land layer](spatial/LAND_FAO_34_47.geojson) after common-mask acceptance. It combines the World Bank land polygons with the derived Sao Pedro and Sao Paulo supplement, retains nearby land for coastal harmonisation, and removes administrative attributes without simplifying the coastline. Original sources are archived outside the repository; the source archive, member paths and checksums are recorded in [source and mask register](spatial/land_sources_register.json). See [source and mask register](spatial/land_sources_register.json) for the derivation, checksums and outstanding acceptance checks.
+
+Do not assign these operations to a particular compass direction. Apply land exclusion along mainland coasts and around islands wherever they occur.
+
+#### Prepare and approve the common masks
+
+- Keep the compact regional reference layers and accepted processing masks in `spatial/`. Archive the original source datasets outside the repository; record the archive location, member paths and checksums in [the shared source and mask register](spatial/land_sources_register.json), together with each layer's source, version or retrieval date, CRS, modifications and acceptance status.
+- Validate the terrestrial polygons and merge them into a common land mask. Retain small islands and rocks supported by the accepted source.
+- Inspect differences between the FAO coastline and the terrestrial reference. Where they disagree, use the accepted terrestrial reference to define the land-sea boundary while preserving the external statistical limits of Areas 34 and 47. Document and review any reconstruction of the coastal part of the scope mask. Do not enlarge the external statistical boundaries.
+- Accept the common masks before applying them across papers. Use the same accepted mask versions for all studies in a synthesis, and record later revisions that require reprocessing earlier polygons.
+
+The Sao Pedro and Sao Paulo supplement is derived from the Brazilian Navy's chart 11 plan at 1:1,000 scale. Review its contours, coverage, processing method and source-use conditions before accepting it into the common land mask. Retain its status as a derived dataset and its documented limitations.
+
+#### Clip each study-area geometry
+
+1. Construct and geographically calibrate the footprint using the paper's text, map, caption and legend, following the evidence-selection rules above.
+2. Intersect the complete footprint with the accepted FAO 34/47 scope mask.
+3. Subtract the accepted land mask from the intersection.
+4. Preserve disconnected components and interior holes. Do not join separate areas or fill gaps merely to obtain a single polygon.
+5. Validate the result and inspect coastal sections and islands. Confirm that no measurable area remains outside the accepted scope mask or overlaps the land mask, using a documented numerical tolerance.
+6. If the intersection is empty, record that the mapped footprint provides no coverage within the review area and reassess its attribution to the extracted result.
+
+#### Record and verify the result
+
+Record the source footprint, mask versions, processing steps, numerical tolerance and unresolved limitations in the geometry metadata and review log. In `study_area_as_reported`, describe the area supported by the paper. In `extraction_notes`, explain the clipping and what portion is retained for the review.
+
+Check that the exported study-area GeoJSON preserves all components and holes and remains consistent with its calibration and editing metadata. Reopen it in GIS and in the tracer. If the tracer cannot preserve the clipped geometry, retain the result as pending and document the compatibility issue.
+
+A finer land mask improves coastal delineation but does not increase the positional accuracy of the paper's map or its calibration. Keep those uncertainties explicit.
+
+### Use bathymetry only where it supports the evidence footprint
+
+Use a versioned bathymetric raster and derived depth contours as an additional reference when the paper defines a depth-bounded study domain. An explicit limit such as sampling to the 500-m isobath can justify a bathymetric boundary. A reported range of capture depths alone does not establish continuous sampling throughout that depth band. Do not infer occupied area from depth suitability alone.
+
+Prefer the article's explicit boundary or spatial data. Use external bathymetry to reconstruct missing depth limits only when its role is justified by the text, figure and sampling design. Retain the original footprint, identify reconstructed sections, preserve gaps and components, and record the raster version, source, CRS, vertical units and convention, resolution, contour thresholds and processing steps. A finer raster does not improve the accuracy of the source map or calibration. Compare the reconstruction against the article's map and record discrepancies. Leave unsupported boundaries pending rather than replacing them with an arbitrary contour.
+
+Keep the bathymetric raster separate from the statistical-scope and land masks. Archive large source grids outside the repository and retain reproducible regional extracts or derived products with their provenance. Do not use the raster's zero contour to replace the accepted land mask without a separate review. Verify coverage before extracting contours; do not fill missing coverage by extrapolation. Generate article-specific depth thresholds as needed rather than limiting all articles to a fixed contour list.
+
+### Assign jurisdiction and statistical units after geographic verification
+
+Construct and calibrate the result-specific footprint from text and mapped evidence, apply justified depth or jurisdictional construction constraints, restrict it to the accepted FAO 34/47 scope and exclude land. Verify the geometry before calculating its spatial classifications. Review the study-area description and polygon together so that neither implies unsupported precision or coverage.
+
+Intersect the verified regional geometry with the versioned EEZ reference and the accepted FAO assignment-unit layer. These layers classify the polygon; do not normally use them to reshape it. An EEZ boundary can constrain construction only when the paper explicitly restricts its domain to that jurisdiction. Modern jurisdiction boundaries are not automatically historical fishing-agreement boundaries.
+
+For each resultID, retain an audit table containing the polygon filename and checksum, reference layer and checksum, jurisdiction or FAO code, overlap area, polygon area, percentage of polygon area, calculation CRS, assignment basis and review status. The percentages describe spatial extent only and must not be interpreted as shares of observations, catches or fishing effort. Do not split or duplicate an aggregate result merely because its footprint spans several units.
+
+Assign every supported unit with a substantive area overlap. Exclude edge-only contacts. Use a documented numerical tolerance for computational artifacts and separately assess small overlaps in relation to calibration and boundary uncertainty; do not use one arbitrary percentage threshold to erase genuine small regions. Flag unstable classifications for human review. Preserve overlapping claims and distinguish territory from sovereign state, mapping accepted territory names to the project dropdown labels. Do not count overlapping claims twice when calculating total covered area.
+
+Assign `International waters` only from intersection with the explicit [regional high-seas reference](spatial/HIGH_SEAS_FAO_34_47.geojson), derived from Marine Regions High Seas v2 (2024). Unassigned coastal gaps caused by reference-layer differences are excluded from automatic jurisdiction assignment: do not classify them as international waters, merge them into the nearest EEZ or modify the study footprint to remove them. Record any unassigned overlap and its consequence in the spatial audit; a coastal gap alone must not add an EEZ or `International waters` to the workbook.
+
+Record the most detailed FAO units supported by the spatial evidence, using the explicit hierarchy supplied by the source. Do not infer a parent solely by splitting a code string: source codes may use different conventions. Avoid listing both a parent and its descendant as independent covered units. Retain the original source code, label and hierarchy; document any display-code crosswalk rather than silently changing official source values. Where boundaries differ between the existing major-area mask and the current hierarchy, resolve and approve a common version before routine assignment. Retain unresolved residuals for review.
+
+Spatial assignments are provisional until the polygon and classifications have been checked. Where no usable polygon exists, text-supported EEZ or FAO assignments can be recorded with their explicit source and method; do not manufacture a polygon to populate these fields. Log discrepancies between text and geometry. Preserve existing populated workbook values until an authorised, logged correction is applied.
+
+#### Shared reference files and acceptance status
+
+Use [the FAO hierarchy](spatial/FAO_34_47_hierarchy.geojson), [the terminal assignment units](spatial/FAO_34_47_assignment_units.geojson) and [the code catalogue](spatial/FAO_34_47_catalogue.csv). The catalogue contains 45 codes, including 33 terminal units and 12 broader fallback units. Keep the original source codes, including the FAO WFS subdivision notation, and use the explicit parent fields rather than reconstructing the hierarchy from punctuation.
+
+Use [the regional EEZ reference](spatial/EEZ_FAO_34_47.geojson) and [the regional high-seas reference](spatial/HIGH_SEAS_FAO_34_47.geojson) for jurisdiction classification. The high-seas layer is clipped to FAO 34/47 and excludes the project land mask and current EEZ polygons. Territory and sovereign fields and overlapping claims must be retained. The former unclassified-residual layer is retired from `spatial/` and archived outside the repository. Its coastal remnants are not retained as a working classification layer; they are not added to neighbouring jurisdictions or subtracted from study polygons.
+
+Sources, retrieval dates, hashes, processing methods, validation and remaining limitations are recorded in [the spatial reference register](spatial/spatial_reference_register.json). These classification references were retrieved on 26 November 2026. The catalogue is approved for the workbook; routine automatic spatial assignments remain pending reconciliation of the current FAO hierarchy with the existing major-area mask and review of uncertain jurisdictional boundary intersections. Coastal residuals are deliberately excluded from automatic classification under the policy above. Do not silently change the review's external statistical limits or infer historical jurisdiction boundaries from the current EEZ layer. Use the verified [GEBCO 2020 regional raster](spatial/GEBCO_2020_FAO_34_47.tif) for bathymetric reference and article-specific contour extraction. It covers FAO 34/47 at the original 15-arc-second spacing, with lossless compression and cells outside the statistical scope set to NoData. Elevations are in metres relative to sea level; depth contours use negative elevation values (for example, -750 m for 750-m depth). Base-resolution values and grid alignment are unchanged from the source. Display overviews are not the analytical resolution. This raster is not a universal depth mask: justify each article-specific depth constraint under the bathymetry rules above, and retain the separate land-exclusion procedure.
+
 
 ### Complete the tracer workflow: select, trace, calibrate and export
 
@@ -166,6 +236,8 @@ More controls do not correct an unsuitable transformation. Inspect whether Check
 Read the Check errors in kilometres, compare the geographic preview with the source and an independent reference such as a coastline, and inspect any vertices outside the Fit-control boundary, where the transformation extrapolates. Judge the errors against the figure resolution and intended mapping use; do not assume a successful fit proves geographic accuracy. Correct misplaced controls, signs or coordinate conversions. If the affine model cannot adequately represent the source projection, the reference locations cannot be verified or the errors are unacceptable, leave geometry generation pending and document the specific obstacle. Do not invent control coordinates or force an export.
 
 Complete every item of the tracer's geographic-review checklist only after performing the corresponding check. Identify the person or AI that actually performed this technical review; the AI must not enter the assigned human reviewer's identity or imply human approval. Record any required explanation of extrapolated sections and their reference evidence. The tracer's export status `reviewed` records this technical geographic check; it does not replace the independent human review tracked in the workbook.
+
+Export the regional study-area geometry only after completing the scope clipping, land exclusion and verification steps above. Preserve the complete source footprint and its calibration so that the clipped result can be reproduced and revised.
 
 Once both export buttons are enabled, download **both** `Download study-area GeoJSON` and `Download calibration GeoJSON`. Use the tracer's native export structures so that the pair remains usable in GIS and can be reloaded, edited and checked in the same website. Preserve the polygon's geographic coordinates and its editing metadata, including image-space vertices, crop, page, render resolution and embedded calibration. Preserve the calibration's geographic Point features, corresponding pixel positions, Fit/Check roles, coordinate-source notes, diagnostics, projection assumption and review metadata. Do not strip these fields to produce a generic geometry-only GeoJSON.
 
@@ -227,8 +299,9 @@ The fields below follow the order in the workbook's `columnExplanation` tab. Use
 | --- | --- |
 | `resultID` | Use a stable ID such as `473-01` for a distinct result. Reuse it on linked rows representing that same result. A separate estimate for another area or gear gets a different ID. |
 | `study_area_as_reported` | One paragraph describing the result-specific study area and guiding polygon delineation, following section 2. Combine text and mapped evidence, including relevant coordinates, depths, boundary interpretation and temporal applicability. Distinguish reported limits from inferred or proposed limits and cite the supporting figure/page. |
-| `FAO_area` | Record `34` or `47` when the result is reported for that area or its location falls within the linked boundary. Use `34 / 47` when the same result applies to both. Leave blank while attribution is unresolved. |
-| `EEZ` | Record the verified EEZ reporting unit or `International waters` when supported. A landing port or fleet nationality does not locate the catch. If a supported EEZ is absent from the list, name it in `extraction_notes`. |
+| `FAO_area` | Record `34`, `47` or `34 / 47` for the result-specific regional evidence. Prefer a verified polygon intersection; otherwise use explicit reported location and record the assignment basis. Leave unresolved attribution pending. |
+| `FAO_subdivisions` | Immediately after `FAO_area`, record the supported most detailed FAO codes from the shared 45-code catalogue, separated by ` / `, without duplicating their parents. Use the 33 terminal units for detailed spatial assignment; select a broader fallback unit when only that level is supported. Record reference versions, assignment basis and uncertain overlaps in `extraction_notes` or the geometry log. Leave unknown assignments blank. |
+| `EEZ` | Record all supported jurisdiction reporting units using the agreed territory labels. Prefer verified polygon intersections; otherwise cite explicit reported attribution. Review overlapping claims, uncertain boundary intersections and international waters. Modern EEZs do not establish historical agreement boundaries. A landing port or vessel flag does not locate the catch. Record the assignment basis and any missing dropdown unit in `extraction_notes` or the geometry log. |
 | `evidence_scope` | Use `Regional evidence` for a result attributable to FAO 34 or 47. In an otherwise eligible paper, use `Global evidence only` for context that cannot be separated for the region, and keep that result out of the regional synthesis. Use `Pending verification` when attribution needs checking. |
 | `polygon_studyArea` | For new work, use `Yes` only when the calibrated study-area GeoJSON and its companion calibration GeoJSON have both been exported, saved and verified under section 3. Use `No` while that pair is unavailable and explain pending geometry work in `extraction_notes`. A pixel-space trace, point, line or set of isolated cells alone does not constitute a completed study-area polygon. Preserve existing values subject to the correction rules. |
 | `geometry_file` | Path to the verified `_study-area.geojson`, relative to the reviewer workbook. Save the matching `_calibration.geojson` alongside it and record the companion path in `extraction_notes` or the reviewer change log. Leave blank for new work without the verified pair. Historical trace paths require a logged correction when the GeoJSON pair is completed. |
